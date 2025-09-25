@@ -1,0 +1,948 @@
+const User = require('../models/User');
+const Transaction = require('../models/Transaction');
+const WalletTransaction = require('../models/WalletTransaction');
+const { FlutterwaveService } = require('../utils/flutterwave');
+
+const flutterwaveService = new FlutterwaveService();
+
+/**
+ * Get bill categories (telecom providers like MTN, Airtel, etc.)
+ * GET /api/bills/categories?type=airtime (get airtime categories)
+ * GET /api/bills/categories?type=data (get data categories)
+ * GET /api/bills/categories (get all categories)
+ */
+const getBillCategories = async (req, res) => {
+  try {
+    const { type } = req.query;
+    const user = req.user;
+    
+    console.log('🔍 Debug: getBillCategories called with type:', type, 'for user:', user.email);
+    
+    const result = await flutterwaveService.getBillCategories(type);
+    
+    if (result.success) {
+      console.log('✅ Debug: Bill categories fetched successfully:', result.data?.length || 0);
+      res.json({
+        success: true,
+        message: 'Bill categories fetched successfully',
+        data: result.data
+      });
+    } else {
+      console.log('❌ Debug: Failed to fetch bill categories:', result.message);
+      res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error in getBillCategories:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch bill categories',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+/**
+ * Get bill items for a specific biller (data plans, airtime amounts, etc.)
+ * GET /api/bills/items/BIL108 (get MTN data plans)
+ * GET /api/bills/items/BIL109 (get Airtel data plans)
+ */
+const getBillItemsForBiller = async (req, res) => {
+  try {
+    const { biller_code } = req.params;
+    const user = req.user;
+    
+    console.log('🔍 Debug: getBillItemsForBiller called for biller:', biller_code, 'for user:', user.email);
+    
+    if (!biller_code) {
+      return res.status(400).json({
+        success: false,
+        message: 'Biller code is required'
+      });
+    }
+    
+    const result = await flutterwaveService.getBillItems(biller_code);
+    
+    if (result.success) {
+      console.log('✅ Debug: Bill items fetched successfully:', result.data?.length || 0);
+      res.json({
+        success: true,
+        message: 'Bill items fetched successfully',
+        data: result.data
+      });
+    } else {
+      console.log('❌ Debug: Failed to fetch bill items:', result.message);
+      res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error in getBillItemsForBiller:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch bill items',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+/**
+ * Get bill categories and items (legacy endpoint for backward compatibility)
+ * GET /api/bills
+ */
+const getBillItems = async (req, res) => {
+  try {
+    const { category, biller_code } = req.query;
+    
+    let result;
+    
+    if (biller_code) {
+      // Get specific biller items
+      result = await flutterwaveService.getBillItems(biller_code);
+    } else if (category) {
+      // Get billers for a specific category
+      result = await flutterwaveService.getBillers(category);
+    } else {
+      // Get all bill categories
+      result = await flutterwaveService.getBillCategories();
+    }
+    
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: result.data
+    });
+  } catch (error) {
+    console.error('Get bill items error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch bill items',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+/**
+ * Create bill payment session and return hosted link
+ * POST /api/bills/pay
+ * Body: { biller_code, variation_code, amount, phone_number, plan_name?, customer_name? }
+ */
+const createBillPayment = async (req, res) => {
+  try {
+    const { 
+      biller_code, 
+      variation_code, 
+      amount, 
+      phone_number, 
+      plan_name, 
+      customer_name 
+    } = req.body;
+    
+    const user = req.user;
+    
+    console.log('🔍 Debug: createBillPayment called:', {
+      biller_code,
+      variation_code,
+      amount,
+      phone_number,
+      user_email: user.email
+    });
+    
+    // Validate required fields
+    if (!biller_code || !variation_code || !amount || !phone_number) {
+      return res.status(400).json({
+        success: false,
+        message: 'biller_code, variation_code, amount, and phone_number are required'
+      });
+    }
+    
+    // Check if user has active subscription for discount
+    const hasActiveSubscription = user.isSubscribed && 
+      user.subscriptionExpiry && 
+      user.subscriptionExpiry > new Date();
+    
+    // Calculate discounted amount (10% off if subscription exists)
+    const discountPercentage = hasActiveSubscription ? 10 : 0;
+    const discountAmount = (amount * discountPercentage) / 100;
+    const discountedAmount = amount - discountAmount;
+    
+    console.log('💰 Discount calculation:', {
+      originalAmount: amount,
+      discountPercentage,
+      discountAmount,
+      discountedAmount,
+      hasActiveSubscription
+    });
+    
+    // Generate unique transaction reference
+    const txRef = `BILL_${user._id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Create payment session with Flutterwave
+    const paymentData = {
+      tx_ref: txRef,
+      amount: discountedAmount,
+      currency: 'NGN',
+      redirect_url: `${process.env.FRONTEND_URL || 'https://maralempay.com'}/payment/callback?status=successful`,
+      payment_options: 'card,ussd',
+      customer: {
+        email: user.email,
+        phone_number: phone_number,
+        name: customer_name || `${user.firstName} ${user.lastName}`
+      },
+      customizations: {
+        title: 'MaralemPay Bill Payment',
+        description: plan_name || `Payment for ${biller_code} - ${variation_code}`,
+        logo: 'https://maralempay.com/logo.png'
+      },
+      meta: {
+        biller_code: biller_code,
+        variation_code: variation_code,
+        original_amount: amount,
+        discount_amount: discountAmount,
+        discounted_amount: discountedAmount,
+        user_id: user._id,
+        payment_type: 'bill_payment'
+      }
+    };
+    
+    // Initialize payment with Flutterwave
+    const paymentResult = await flutterwaveService.initializePayment(paymentData);
+    
+    if (!paymentResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: paymentResult.message
+      });
+    }
+    
+    // Save transaction record
+    const transaction = new Transaction({
+      user: user._id,
+      type: 'bill_payment',
+      amount: discountedAmount,
+      originalAmount: amount,
+      discountAmount: discountAmount,
+      status: 'pending',
+      txRef: txRef,
+      flwRef: paymentResult.data.flw_ref,
+      billerCode: biller_code,
+      variationCode: variation_code,
+      phoneNumber: phone_number,
+      planName: plan_name,
+      paymentLink: paymentResult.data.link,
+      metadata: {
+        biller_code: biller_code,
+        variation_code: variation_code,
+        original_amount: amount,
+        discount_amount: discountAmount,
+        discounted_amount: discountedAmount,
+        has_subscription: hasActiveSubscription,
+        discount_percentage: discountPercentage
+      }
+    });
+    
+    await transaction.save();
+    
+    console.log('✅ Debug: Payment session created successfully:', {
+      tx_ref: txRef,
+      amount: discountedAmount,
+      user_email: user.email
+    });
+    
+    res.json({
+      success: true,
+      message: 'Payment session created successfully',
+      data: {
+        payment_link: paymentResult.data.link,
+        tx_ref: txRef,
+        amount: discountedAmount,
+        original_amount: amount,
+        discount_amount: discountAmount,
+        discount_percentage: discountPercentage,
+        transaction_id: transaction._id,
+        phone_number: phone_number,
+        plan_name: plan_name
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error in createBillPayment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create payment session',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+/**
+ * Verify bill payment transaction and process bill delivery
+ * GET /api/bills/verify/:tx_ref
+ */
+const verifyBillPayment = async (req, res) => {
+  try {
+    const { tx_ref } = req.params;
+    const user = req.user;
+    
+    console.log('🔍 Debug: verifyBillPayment called for tx_ref:', tx_ref, 'for user:', user.email);
+    
+    // Find the transaction by tx_ref
+    const transaction = await Transaction.findOne({
+      txRef: tx_ref,
+      user: user._id,
+      type: 'bill_payment'
+    });
+    
+    if (!transaction) {
+      console.log('❌ Debug: Transaction not found for tx_ref:', tx_ref);
+      return res.status(404).json({
+        success: false,
+        message: 'Transaction not found'
+      });
+    }
+    
+    // Step 4: Verify payment with Flutterwave (using tx_ref, not flw_ref)
+    const verificationResult = await flutterwaveService.verifyPayment(transaction.txRef);
+    
+    if (!verificationResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: verificationResult.message
+      });
+    }
+    
+    const paymentData = verificationResult.data;
+    
+    // Check if payment was successful
+    if (paymentData.status === 'successful') {
+      // Update transaction status
+      transaction.status = 'paid';
+      transaction.paymentDetails = paymentData;
+      transaction.paidAt = new Date();
+      await transaction.save();
+      
+      // Step 5: Process airtime purchase after payment confirmation
+      const network = transaction.metadata?.network || 'MTN';
+      const airtimeResult = await flutterwaveService.purchaseAirtime({
+        phone: transaction.phoneNumber,
+        amount: transaction.originalAmount,
+        network: network,
+        txRef: transaction.txRef
+      });
+      
+      if (airtimeResult.success) {
+        // Mark transaction as completed
+        transaction.status = 'completed';
+        transaction.billDetails = airtimeResult.data;
+        transaction.completedAt = new Date();
+        await transaction.save();
+        
+        res.json({
+          success: true,
+          message: 'Bill payment completed successfully',
+          data: {
+            transaction_id: transaction._id,
+            status: 'completed',
+            amount: transaction.amount,
+            original_amount: transaction.originalAmount,
+            discount_amount: transaction.discountAmount,
+            phone_number: transaction.phoneNumber,
+            plan_name: transaction.planName,
+            biller_code: transaction.billerCode,
+            variation_code: transaction.variationCode,
+            bill_details: airtimeResult.data
+          }
+        });
+      } else {
+        // Payment successful but bill delivery failed
+        transaction.status = 'bill_failed';
+        transaction.billError = airtimeResult.message;
+        await transaction.save();
+        
+        res.status(400).json({
+          success: false,
+          message: 'Payment successful but bill delivery failed. Refund will be processed.',
+          data: {
+            transaction_id: transaction._id,
+            status: 'bill_failed',
+            payment_status: 'successful',
+            bill_error: airtimeResult.message
+          }
+        });
+      }
+    } else {
+      // Payment failed or cancelled
+      transaction.status = 'failed';
+      transaction.paymentDetails = paymentData;
+      await transaction.save();
+      
+      res.status(400).json({
+        success: false,
+        message: 'Payment was not successful',
+        data: {
+          transaction_id: transaction._id,
+          status: 'failed',
+          payment_status: paymentData.status,
+          amount: transaction.amount
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Verify bill payment error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to verify bill payment',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+/**
+ * Get user's bill payment history
+ * GET /api/bills/history
+ */
+const getBillHistory = async (req, res) => {
+  try {
+    const user = req.user;
+    const { page = 1, limit = 10, status } = req.query;
+    
+    const query = {
+      user: user._id,
+      type: 'bill_payment'
+    };
+    
+    if (status) {
+      query.status = status;
+    }
+    
+    const transactions = await Transaction.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .select('-paymentDetails -billDetails');
+    
+    const total = await Transaction.countDocuments(query);
+    
+    res.json({
+      success: true,
+      data: {
+        transactions,
+        pagination: {
+          current_page: parseInt(page),
+          total_pages: Math.ceil(total / limit),
+          total_transactions: total,
+          has_next: page * limit < total,
+          has_prev: page > 1
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get bill history error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch bill history',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+/**
+ * Get transaction details
+ * GET /api/bills/transaction/:transaction_id
+ */
+const getTransactionDetails = async (req, res) => {
+  try {
+    const { transaction_id } = req.params;
+    const user = req.user;
+    
+    const transaction = await Transaction.findOne({
+      _id: transaction_id,
+      user: user._id,
+      type: 'bill_payment'
+    });
+    
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transaction not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: transaction
+    });
+  } catch (error) {
+    console.error('Get transaction details error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch transaction details',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+/**
+ * Handle payment callback and verify transaction
+ * GET /api/bills/verify/:transaction_id
+ */
+const handlePaymentCallback = async (req, res) => {
+  try {
+    const { transaction_id } = req.params;
+    const { status, tx_ref } = req.query;
+    
+    console.log('🔔 Payment callback received:', {
+      transaction_id,
+      status,
+      tx_ref
+    });
+    
+    // Find transaction by transaction_id or tx_ref
+    let transaction = null;
+    if (transaction_id) {
+      transaction = await Transaction.findOne({ 
+        $or: [
+          { _id: transaction_id },
+          { transactionId: transaction_id },
+          { txRef: transaction_id }
+        ]
+      });
+    } else if (tx_ref) {
+      transaction = await Transaction.findOne({ txRef: tx_ref });
+    }
+    
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        message: 'Transaction not found'
+      });
+    }
+    
+    // Verify with Flutterwave
+    const verificationResult = await flutterwaveService.verifyTransaction(
+      transaction.transactionId || transaction.txRef
+    );
+    
+    if (!verificationResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed',
+        data: {
+          transaction_id: transaction._id,
+          tx_ref: transaction.txRef,
+          status: transaction.status
+        }
+      });
+    }
+    
+    const paymentData = verificationResult.data;
+    const paymentStatus = paymentData.status;
+    
+    console.log('🔍 Payment verification result:', {
+      transaction_id: transaction._id,
+      tx_ref: transaction.txRef,
+      payment_status: paymentStatus
+    });
+    
+    // Update transaction based on payment status
+    if (paymentStatus === 'successful') {
+      // Update to paid
+      await Transaction.findByIdAndUpdate(transaction._id, {
+        status: 'paid',
+        paymentData: paymentData,
+        transactionId: paymentData.id,
+        paidAt: new Date()
+      });
+      
+      // Trigger bill delivery
+      try {
+        const billDeliveryResult = await flutterwaveService.purchaseBill({
+          country: 'NG',
+          customer: transaction.phoneNumber,
+          amount: transaction.amount,
+          recurrence: 'ONCE',
+          type: transaction.billerCode,
+          reference: transaction.txRef
+        });
+        
+        if (billDeliveryResult.success) {
+          // Update to completed
+          await Transaction.findByIdAndUpdate(transaction._id, {
+            status: 'completed',
+            billDeliveryData: billDeliveryResult.data,
+            completedAt: new Date()
+          });
+          
+          console.log('🎉 Bill delivered successfully:', {
+            transaction_id: transaction._id,
+            tx_ref: transaction.txRef
+          });
+        } else {
+          // Mark as bill delivery failed
+          await Transaction.findByIdAndUpdate(transaction._id, {
+            status: 'bill_failed',
+            billDeliveryError: billDeliveryResult.message
+          });
+        }
+      } catch (billError) {
+        console.error('❌ Bill delivery error:', billError);
+        await Transaction.findByIdAndUpdate(transaction._id, {
+          status: 'bill_failed',
+          billDeliveryError: billError.message
+        });
+      }
+    } else if (paymentStatus === 'failed' || paymentStatus === 'cancelled') {
+      // Update to failed
+      await Transaction.findByIdAndUpdate(transaction._id, {
+        status: 'failed',
+        paymentData: paymentData,
+        failedAt: new Date()
+      });
+    }
+    
+    // Get updated transaction
+    const updatedTransaction = await Transaction.findById(transaction._id);
+    
+    // Return appropriate response
+    let responseStatus = 'pending';
+    let message = 'Payment is still being processed';
+    
+    switch (updatedTransaction.status) {
+      case 'completed':
+        responseStatus = 'success';
+        message = 'Payment successful and bill delivered';
+        break;
+      case 'paid':
+        responseStatus = 'success';
+        message = 'Payment successful, bill delivery in progress';
+        break;
+      case 'failed':
+      case 'bill_failed':
+        responseStatus = 'failed';
+        message = 'Payment failed or bill delivery failed';
+        break;
+      case 'pending':
+        responseStatus = 'pending';
+        message = 'Payment is still being processed';
+        break;
+    }
+    
+    res.json({
+      success: responseStatus === 'success',
+      status: responseStatus,
+      message: message,
+      data: {
+        transaction_id: updatedTransaction._id,
+        tx_ref: updatedTransaction.txRef,
+        status: updatedTransaction.status,
+        amount: updatedTransaction.amount,
+        originalAmount: updatedTransaction.originalAmount,
+        discountAmount: updatedTransaction.discountAmount,
+        billerCode: updatedTransaction.billerCode,
+        variationCode: updatedTransaction.variationCode,
+        phoneNumber: updatedTransaction.phoneNumber,
+        planName: updatedTransaction.planName
+      }
+    });
+  } catch (error) {
+    console.error('❌ Payment callback error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Payment callback processing failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+/**
+ * Retry pending payments (cron job or manual trigger)
+ * POST /api/bills/retry-pending
+ */
+const retryPendingPayments = async (req, res) => {
+  try {
+    console.log('🔄 Starting retry for pending payments...');
+    
+    // Find all pending transactions older than 5 minutes
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const pendingTransactions = await Transaction.find({
+      status: 'pending',
+      createdAt: { $lt: fiveMinutesAgo }
+    }).limit(10); // Process max 10 at a time
+    
+    console.log(`📋 Found ${pendingTransactions.length} pending transactions to retry`);
+    
+    const results = [];
+    
+    for (const transaction of pendingTransactions) {
+      try {
+        console.log(`🔍 Retrying transaction: ${transaction._id} (${transaction.txRef})`);
+        
+        // Verify with Flutterwave
+        const verificationResult = await flutterwaveService.verifyTransaction(
+          transaction.transactionId || transaction.txRef
+        );
+        
+        if (verificationResult.success) {
+          const paymentData = verificationResult.data;
+          const paymentStatus = paymentData.status;
+          
+          if (paymentStatus === 'successful') {
+            // Update to paid
+            await Transaction.findByIdAndUpdate(transaction._id, {
+              status: 'paid',
+              paymentData: paymentData,
+              transactionId: paymentData.id,
+              paidAt: new Date()
+            });
+            
+            // Trigger bill delivery
+            try {
+              const billDeliveryResult = await flutterwaveService.purchaseBill({
+                country: 'NG',
+                customer: transaction.phoneNumber,
+                amount: transaction.amount,
+                recurrence: 'ONCE',
+                type: transaction.billerCode,
+                reference: transaction.txRef
+              });
+              
+              if (billDeliveryResult.success) {
+                await Transaction.findByIdAndUpdate(transaction._id, {
+                  status: 'completed',
+                  billDeliveryData: billDeliveryResult.data,
+                  completedAt: new Date()
+                });
+                
+                console.log(`✅ Transaction completed: ${transaction._id}`);
+                results.push({ transaction_id: transaction._id, status: 'completed' });
+              } else {
+                await Transaction.findByIdAndUpdate(transaction._id, {
+                  status: 'bill_failed',
+                  billDeliveryError: billDeliveryResult.message
+                });
+                
+                console.log(`❌ Bill delivery failed: ${transaction._id}`);
+                results.push({ transaction_id: transaction._id, status: 'bill_failed' });
+              }
+            } catch (billError) {
+              await Transaction.findByIdAndUpdate(transaction._id, {
+                status: 'bill_failed',
+                billDeliveryError: billError.message
+              });
+              
+              console.log(`❌ Bill delivery error: ${transaction._id}`, billError.message);
+              results.push({ transaction_id: transaction._id, status: 'bill_failed' });
+            }
+          } else if (paymentStatus === 'failed' || paymentStatus === 'cancelled') {
+            await Transaction.findByIdAndUpdate(transaction._id, {
+              status: 'failed',
+              paymentData: paymentData,
+              failedAt: new Date()
+            });
+            
+            console.log(`❌ Transaction failed: ${transaction._id}`);
+            results.push({ transaction_id: transaction._id, status: 'failed' });
+          } else {
+            console.log(`⏳ Transaction still pending: ${transaction._id}`);
+            results.push({ transaction_id: transaction._id, status: 'still_pending' });
+          }
+        } else {
+          console.log(`⚠️ Verification failed for: ${transaction._id}`);
+          results.push({ transaction_id: transaction._id, status: 'verification_failed' });
+        }
+      } catch (error) {
+        console.error(`❌ Error processing transaction ${transaction._id}:`, error);
+        results.push({ transaction_id: transaction._id, status: 'error', error: error.message });
+      }
+    }
+    
+    console.log('✅ Retry process completed:', results);
+    
+    res.json({
+      success: true,
+      message: `Processed ${pendingTransactions.length} pending transactions`,
+      results: results
+    });
+  } catch (error) {
+    console.error('❌ Retry pending payments error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retry pending payments',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+/**
+ * Create airtime purchase session (simplified endpoint)
+ * POST /api/bills/airtime
+ */
+const createAirtimePurchase = async (req, res) => {
+  try {
+    const { 
+      phone_number, 
+      amount, 
+      network = 'MTN'
+    } = req.body;
+    
+    const user = req.user;
+    
+    // Validate required fields
+    if (!phone_number || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: 'phone_number and amount are required'
+      });
+    }
+    
+    console.log('🔍 Creating airtime purchase:', {
+      phone_number,
+      amount,
+      network,
+      user_id: user._id
+    });
+    
+    // Check if user has active subscription for discount
+    const hasActiveSubscription = user.isSubscribed && 
+      user.subscriptionExpiry && 
+      user.subscriptionExpiry > new Date();
+    
+    // Calculate discounted amount (10% off if subscription exists)
+    const discountPercentage = hasActiveSubscription ? 10 : 0;
+    const discountAmount = (amount * discountPercentage) / 100;
+    const discountedAmount = amount - discountAmount;
+    
+    console.log('💰 Discount calculation:', {
+      originalAmount: amount,
+      discountPercentage,
+      discountAmount,
+      discountedAmount,
+      hasActiveSubscription
+    });
+    
+    // Generate unique transaction reference
+    const txRef = `AIRTIME_${user._id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Map network to biller code
+    const billerCodes = {
+      'MTN': 'BIL108',
+      'AIRTEL': 'BIL109', 
+      'GLO': 'BIL110',
+      '9MOBILE': 'BIL111'
+    };
+    
+    const billerCode = billerCodes[network.toUpperCase()] || 'BIL108';
+    
+    // Create payment session with Flutterwave
+    const paymentData = {
+      tx_ref: txRef,
+      amount: discountedAmount,
+      currency: 'NGN',
+      redirect_url: `${process.env.FRONTEND_URL || 'https://maralempay.com'}/payment/callback?status=successful`,
+      payment_options: 'card,ussd',
+      customer: {
+        email: user.email,
+        phone_number: phone_number,
+        name: `${user.firstName} ${user.lastName}`
+      },
+      customizations: {
+        title: 'MaralemPay Airtime Purchase',
+        description: `${network} Airtime - ₦${amount}`,
+        logo: 'https://maralempay.com/logo.png'
+      },
+      meta: {
+        biller_code: billerCode,
+        variation_code: 'AT099',
+        original_amount: amount,
+        discount_amount: discountAmount,
+        discounted_amount: discountedAmount,
+        user_id: user._id,
+        payment_type: 'airtime_purchase',
+        network: network
+      }
+    };
+    
+    // Initialize payment with Flutterwave
+    const paymentResult = await flutterwaveService.initializePayment(paymentData);
+    
+    if (!paymentResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: paymentResult.message
+      });
+    }
+    
+    // Save transaction record
+    const transaction = new Transaction({
+      user: user._id,
+      type: 'airtime_purchase',
+      amount: discountedAmount,
+      originalAmount: amount,
+      discountAmount: discountAmount,
+      status: 'pending',
+      txRef: txRef,
+      flwRef: paymentResult.data.flw_ref,
+      billerCode: billerCode,
+      variationCode: 'AT099',
+      phoneNumber: phone_number,
+      planName: `${network} Airtime - ₦${amount}`,
+      paymentLink: paymentResult.data.link,
+      metadata: {
+        biller_code: billerCode,
+        variation_code: 'AT099',
+        original_amount: amount,
+        discount_amount: discountAmount,
+        discounted_amount: discountedAmount,
+        has_subscription: hasActiveSubscription,
+        discount_percentage: discountPercentage,
+        network: network
+      }
+    });
+    
+    await transaction.save();
+    
+    res.json({
+      success: true,
+      message: 'Airtime purchase session created successfully',
+      data: {
+        payment_link: paymentResult.data.link,
+        tx_ref: txRef,
+        amount: discountedAmount,
+        original_amount: amount,
+        discount_amount: discountAmount,
+        discount_percentage: discountPercentage,
+        transaction_id: transaction._id,
+        network: network,
+        phone_number: phone_number
+      }
+    });
+  } catch (error) {
+    console.error('Create airtime purchase error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create airtime purchase',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+module.exports = {
+  getBillCategories,
+  getBillItemsForBiller,
+  getBillItems,
+  createBillPayment,
+  createAirtimePurchase,
+  verifyBillPayment,
+  getBillHistory,
+  getTransactionDetails,
+  handlePaymentCallback,
+  retryPendingPayments
+};
