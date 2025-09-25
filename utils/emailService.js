@@ -3,12 +3,15 @@ const nodemailer = require('nodemailer');
 class EmailService {
   constructor() {
     this.transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-      port: process.env.EMAIL_PORT || 587,
-      secure: false, // true for 465, false for other ports
+      host: process.env.EMAIL_HOST || 'mail.maralempay.com.ng',
+      port: process.env.EMAIL_PORT || 465,
+      secure: true, // true for 465, false for other ports
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+        user: process.env.EMAIL_USER || 'hello@maralempay.com.ng',
+        pass: process.env.EMAIL_PASS || 'EzinwokE1@'
+      },
+      tls: {
+        rejectUnauthorized: false
       }
     });
   }
@@ -46,7 +49,7 @@ class EmailService {
       `;
 
       const mailOptions = {
-        from: process.env.EMAIL_FROM || 'noreply@maralempay.com',
+        from: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
         to: to,
         subject: subject,
         html: html
@@ -115,7 +118,7 @@ class EmailService {
       `;
 
       const mailOptions = {
-        from: process.env.EMAIL_FROM || 'noreply@maralempay.com',
+        from: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
         to: to,
         subject: subject,
         html: html
@@ -167,7 +170,7 @@ class EmailService {
       `;
 
       const mailOptions = {
-        from: process.env.EMAIL_FROM || 'noreply@maralempay.com',
+        from: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
         to: to,
         subject: subject,
         html: html
@@ -219,7 +222,7 @@ class EmailService {
       `;
 
       const mailOptions = {
-        from: process.env.EMAIL_FROM || 'noreply@maralempay.com',
+        from: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
         to: to,
         subject: subject,
         html: html

@@ -48,7 +48,7 @@ class EmailQueue {
     const htmlContent = this.getEmailTemplate(code, type);
 
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'MaralemPay@maralempay.com.ng',
+      from: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
       to: email,
       subject: subject,
       html: htmlContent
@@ -180,13 +180,13 @@ class EmailService {
     
     console.log('📧 Using MaralemPay SMTP as primary email service');
     
-    // MaralemPay SMTP configuration with multiple port options
+    // MaralemPay SMTP configuration with working settings
     this.transporter = nodemailer.createTransport({
       host: process.env.EMAIL_HOST || 'mail.maralempay.com.ng',
-      port: parseInt(process.env.EMAIL_PORT) || 465, // Try 465 first (SSL)
+      port: parseInt(process.env.EMAIL_PORT) || 465, // Use 465 (SSL)
       secure: true, // true for 465, false for other ports
       auth: {
-        user: process.env.EMAIL_USER || 'MaralemPay@maralempay.com.ng',
+        user: process.env.EMAIL_USER || 'hello@maralempay.com.ng',
         pass: process.env.EMAIL_PASS || 'EzinwokE1@'
       },
       tls: {
@@ -212,7 +212,7 @@ class EmailService {
           port: 465,
           secure: true,
           auth: {
-            user: process.env.EMAIL_USER || 'MaralemPay@maralempay.com.ng',
+            user: process.env.EMAIL_USER || 'hello@maralempay.com.ng',
             pass: process.env.EMAIL_PASS || 'EzinwokE1@'
           },
           tls: {
@@ -230,7 +230,7 @@ class EmailService {
           port: 587,
           secure: false,
           auth: {
-            user: process.env.EMAIL_USER || 'MaralemPay@maralempay.com.ng',
+            user: process.env.EMAIL_USER || 'hello@maralempay.com.ng',
             pass: process.env.EMAIL_PASS || 'EzinwokE1@'
           },
           tls: {
@@ -249,7 +249,7 @@ class EmailService {
           port: 25,
           secure: false,
           auth: {
-            user: process.env.EMAIL_USER || 'MaralemPay@maralempay.com.ng',
+            user: process.env.EMAIL_USER || 'hello@maralempay.com.ng',
             pass: process.env.EMAIL_PASS || 'EzinwokE1@'
           },
           connectionTimeout: 30000,
@@ -319,7 +319,7 @@ class EmailService {
     const htmlContent = this.getEmailTemplate(code, type);
 
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'MaralemPay@maralempay.com.ng',
+      from: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
       to: email,
       subject: subject,
       html: htmlContent
@@ -353,7 +353,7 @@ class EmailService {
       const htmlContent = this.getEmailTemplate(code, type);
 
       const mailOptions = {
-        from: process.env.EMAIL_FROM || 'MaralemPay@maralempay.com.ng',
+        from: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
         to: email,
         subject: subject,
         html: htmlContent
@@ -610,7 +610,7 @@ class EmailService {
       `;
 
       const mailOptions = {
-        from: process.env.EMAIL_FROM || 'MaralemPay@maralempay.com.ng',
+        from: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
         to: email,
         subject: subject,
         html: htmlContent
@@ -701,7 +701,7 @@ class EmailService {
           port: 587,
           secure: false,
           auth: {
-            user: process.env.EMAIL_USER || 'MaralemPay@maralempay.com.ng',
+            user: process.env.EMAIL_USER || 'hello@maralempay.com.ng',
             pass: process.env.EMAIL_PASS || 'EzinwokE1@'
           },
           tls: {
@@ -721,7 +721,7 @@ class EmailService {
           port: 465,
           secure: true,
           auth: {
-            user: process.env.EMAIL_USER || 'MaralemPay@maralempay.com.ng',
+            user: process.env.EMAIL_USER || 'hello@maralempay.com.ng',
             pass: process.env.EMAIL_PASS || 'EzinwokE1@'
           },
           tls: {
@@ -739,7 +739,7 @@ class EmailService {
           port: 25,
           secure: false,
           auth: {
-            user: process.env.EMAIL_USER || 'MaralemPay@maralempay.com.ng',
+            user: process.env.EMAIL_USER || 'hello@maralempay.com.ng',
             pass: process.env.EMAIL_PASS || 'EzinwokE1@'
           },
           connectionTimeout: 30000,
