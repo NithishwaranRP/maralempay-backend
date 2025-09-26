@@ -38,7 +38,7 @@ const transactionSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ['initialized', 'paid', 'delivered', 'failed', 'refunded', 'failed_refunded'],
+    enum: ['initialized', 'payment_completed', 'fulfilled', 'fulfillment_failed', 'failed', 'refunded', 'failed_refunded'],
     default: 'initialized',
     index: true
   },
@@ -51,6 +51,15 @@ const transactionSchema = new mongoose.Schema({
   },
   biller_status: { 
     type: String 
+  },
+  fulfillmentData: {
+    billPaymentId: String,
+    billPaymentRef: String,
+    fullAmount: Number,
+    discountAmount: Number,
+    fulfillmentDate: Date,
+    error: String,
+    failureDate: Date,
   },
   deliveredAt: { 
     type: Date 

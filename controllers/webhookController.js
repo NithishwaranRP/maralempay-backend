@@ -1,279 +1,400 @@
-const Transaction = require('../models/Transaction');
 const User = require('../models/User');
-const Subscription = require('../models/Subscription');
+const Transaction = require('../models/Transaction');
 const { FlutterwaveService } = require('../utils/flutterwave');
+const emailService = require('../services/sendpulseEmailService');
 
 const flutterwaveService = new FlutterwaveService();
 
-// Handle Flutterwave webhook
+/**
+ * Handle Flutterwave payment webhook
+ * POST /api/webhooks/flutterwave
+ */
 const handleFlutterwaveWebhook = async (req, res) => {
   try {
+    console.log('🔔 Flutterwave webhook received:', req.body);
+    
     const { event, data } = req.body;
     
-    console.log('🔔 Flutterwave webhook received:', event, data);
+    if (event === 'charge.completed' && data.status === 'successful') {
+      await processSuccessfulPayment(data);
+    }
     
-    if (event === 'charge.completed') {
-      // Handle successful payment
-      const { tx_ref, status, amount, id: transaction_id } = data;
+    res.status(200).json({ success: true, message: 'Webhook processed' });
+  } catch (error) {
+    console.error('❌ Webhook processing error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * Process successful payment and initiate bill fulfillment
+ */
+const processSuccessfulPayment = async (paymentData) => {
+  try {
+    console.log('💳 Processing successful payment:', paymentData.tx_ref);
+    
+    const { tx_ref, amount, customer, meta } = paymentData;
+    
+    // Extract metadata
+    const billItemId = meta?.bill_item_id;
+    const billerCode = meta?.biller_code;
+    const productName = meta?.product_name;
+    const paymentType = meta?.payment_type; // 'airtime' or 'data'
+    const phoneNumber = customer?.phone_number;
+    const customerEmail = customer?.email;
+    
+    console.log('📋 Payment metadata:', {
+      billItemId,
+      billerCode,
+      productName,
+      paymentType,
+      phoneNumber,
+      customerEmail,
+      amount
+    });
+    
+    // Find user by email
+    const user = await User.findOne({ email: customerEmail });
+    if (!user) {
+      console.error('❌ User not found for email:', customerEmail);
+      return;
+    }
+    
+    // Create transaction record
+    const transaction = new Transaction({
+      userId: user._id,
+      type: paymentType === 'airtime' ? 'airtime_purchase' : 'data_purchase',
+      amount: parseFloat(amount),
+      currency: 'NGN',
+      status: 'payment_completed',
+      reference: tx_ref,
+      description: `${productName} for ${phoneNumber}`,
+      metadata: {
+        billItemId,
+        billerCode,
+        productName,
+        paymentType,
+        phoneNumber,
+        customerEmail,
+        flutterwaveRef: paymentData.flw_ref,
+        originalAmount: meta?.original_amount,
+        discountApplied: meta?.discount_applied,
+        discountAmount: meta?.discount_amount,
+      }
+    });
+    
+    await transaction.save();
+    console.log('✅ Transaction record created:', transaction._id);
+    
+    // Process bill payment with full amount
+    await processBillPayment({
+      user,
+      transaction,
+      billerCode,
+      billItemId,
+      phoneNumber,
+      productName,
+      paymentType,
+      customerEmail,
+      originalAmount: meta?.original_amount || amount,
+      discountedAmount: amount,
+    });
+    
+  } catch (error) {
+    console.error('❌ Error processing successful payment:', error);
+  }
+};
+
+/**
+ * Process bill payment with full amount (backend covers the difference)
+ */
+const processBillPayment = async ({
+  user,
+  transaction,
+  billerCode,
+  billItemId,
+  phoneNumber,
+  productName,
+  paymentType,
+  customerEmail,
+  originalAmount,
+  discountedAmount
+}) => {
+  try {
+    console.log('💳 Processing bill payment with full amount...');
+    console.log('   Original Amount: ₦' + originalAmount);
+    console.log('   Discounted Amount: ₦' + discountedAmount);
+    console.log('   Difference (covered by merchant): ₦' + (originalAmount - discountedAmount));
+    
+    // Prepare bill payment request
+    const billPaymentData = {
+      country: 'NG',
+      customer: phoneNumber,
+      amount: parseFloat(originalAmount), // Use full amount
+      recurrence: 'ONCE',
+      type: paymentType === 'airtime' ? 'AIRTIME' : 'DATA',
+      reference: `MARALEM_${Date.now()}_${transaction._id}`,
+      biller_name: billerCode,
+    };
+    
+    console.log('📤 Sending bill payment request:', billPaymentData);
+    
+    // Call Flutterwave Bill Payment API
+    const billResponse = await flutterwaveService.createBillPayment(billPaymentData);
+    
+    if (billResponse.success) {
+      console.log('✅ Bill payment successful:', billResponse.data);
       
-      console.log('💳 Payment completed:', {
-        tx_ref,
-        status,
-        amount,
-        transaction_id
+      // Update transaction status
+      transaction.status = 'fulfilled';
+      transaction.fulfillmentData = {
+        billPaymentId: billResponse.data.id,
+        billPaymentRef: billResponse.data.tx_ref,
+        fullAmount: originalAmount,
+        discountAmount: originalAmount - discountedAmount,
+        fulfillmentDate: new Date(),
+      };
+      await transaction.save();
+      
+      // Send success email
+      await sendPurchaseSuccessEmail({
+        customerEmail,
+        productName,
+        phoneNumber,
+        originalAmount,
+        discountedAmount,
+        transactionRef: transaction.reference,
       });
       
-      if (status === 'successful') {
-        // Check if this is a subscription payment
-        const subscription = await Subscription.findOne({ paymentReference: tx_ref });
-        
-        if (subscription) {
-          // Handle subscription payment
-          console.log('🎯 Subscription payment detected:', {
-            subscription_id: subscription._id,
-            user_id: subscription.user,
-            tx_ref,
-            amount
-          });
-          
-          // Update subscription status
-          subscription.status = 'active';
-          subscription.paymentStatus = 'paid';
-          subscription.paymentDetails = data;
-          subscription.paidAt = new Date();
-          await subscription.save();
-          
-          // Update user subscription status
-          await User.findByIdAndUpdate(subscription.user, {
-            isSubscribed: true,
-            subscriptionDate: subscription.startDate,
-            subscriptionExpiry: subscription.endDate
-          });
-          
-          // Update transaction status
-          await Transaction.findOneAndUpdate(
-            { tx_ref: tx_ref },
-            {
-              status: 'paid', // Use correct status from enum
-              flutterwave_transaction_id: data.id,
-              biller_reference: tx_ref,
-              updatedAt: new Date()
-            }
-          );
-          
-          console.log('✅ Subscription activated successfully:', {
-            subscription_id: subscription._id,
-            user_id: subscription.user,
-            tx_ref,
-            status: 'active'
-          });
-          
-        } else {
-          // Handle regular bill payment
-          const transaction = await Transaction.findOneAndUpdate(
-            { tx_ref: tx_ref },
-            { 
-              status: 'paid',
-              flutterwave_transaction_id: transaction_id,
-              biller_reference: tx_ref,
-              updatedAt: new Date()
-            },
-            { new: true }
-          );
-          
-          if (transaction) {
-            console.log('✅ Transaction updated to paid:', {
-              transaction_id: transaction._id,
-              tx_ref,
-              status: 'paid'
-            });
-            
-            // Trigger bill delivery
-            try {
-              const billDeliveryResult = await flutterwaveService.purchaseBill({
-                country: 'NG',
-                customer: transaction.phoneNumber,
-                amount: transaction.amount,
-                recurrence: 'ONCE',
-                type: transaction.billerCode,
-                reference: tx_ref
-              });
-              
-              if (billDeliveryResult.success) {
-                // Update transaction to completed
-                await Transaction.findByIdAndUpdate(transaction._id, {
-                  status: 'completed',
-                  billDeliveryData: billDeliveryResult.data,
-                  completedAt: new Date()
-                });
-                
-                console.log('🎉 Bill delivered successfully:', {
-                  transaction_id: transaction._id,
-                  tx_ref,
-                  bill_delivery: billDeliveryResult.data
-                });
-              } else {
-                // Mark as bill delivery failed
-                await Transaction.findByIdAndUpdate(transaction._id, {
-                  status: 'bill_failed',
-                  billDeliveryError: billDeliveryResult.message
-                });
-                
-                console.log('❌ Bill delivery failed:', {
-                  transaction_id: transaction._id,
-                  tx_ref,
-                  error: billDeliveryResult.message
-                });
-              }
-            } catch (billError) {
-              console.error('❌ Bill delivery error:', billError);
-              await Transaction.findByIdAndUpdate(transaction._id, {
-                status: 'bill_failed',
-                billDeliveryError: billError.message
-              });
-            }
-          } else {
-            console.log('⚠️ Transaction not found for tx_ref:', tx_ref);
-          }
-        }
-      } else if (status === 'failed' || status === 'cancelled') {
-        // Handle failed payments
-        const subscription = await Subscription.findOne({ paymentReference: tx_ref });
-        
-        if (subscription) {
-          // Update subscription status to failed
-          subscription.status = 'cancelled';
-          subscription.paymentStatus = 'failed';
-          subscription.paymentDetails = data;
-          await subscription.save();
-          
-          console.log('❌ Subscription payment failed:', {
-            subscription_id: subscription._id,
-            tx_ref,
-            status
-          });
-        } else {
-          // Update transaction to failed
-          await Transaction.findOneAndUpdate(
-            { txRef: tx_ref },
-            { 
-              status: 'failed',
-              paymentData: data,
-              failedAt: new Date()
-            }
-          );
-          
-          console.log('❌ Payment failed:', {
-            tx_ref,
-            status
-          });
-        }
-      }
+    } else {
+      console.error('❌ Bill payment failed:', billResponse.message);
+      
+      // Update transaction status
+      transaction.status = 'fulfillment_failed';
+      transaction.fulfillmentData = {
+        error: billResponse.message,
+        failureDate: new Date(),
+      };
+      await transaction.save();
+      
+      // Send failure email
+      await sendPurchaseFailureEmail({
+        customerEmail,
+        productName,
+        phoneNumber,
+        originalAmount,
+        discountedAmount,
+        transactionRef: transaction.reference,
+        errorMessage: billResponse.message,
+      });
     }
     
-    res.status(200).json({ status: 'success' });
   } catch (error) {
-    console.error('❌ Webhook error:', error);
-    res.status(500).json({ status: 'error', message: error.message });
+    console.error('❌ Error processing bill payment:', error);
+    
+    // Update transaction status
+    transaction.status = 'fulfillment_failed';
+    transaction.fulfillmentData = {
+      error: error.message,
+      failureDate: new Date(),
+    };
+    await transaction.save();
+    
+    // Send failure email
+    await sendPurchaseFailureEmail({
+      customerEmail,
+      productName,
+      phoneNumber,
+      originalAmount,
+      discountedAmount,
+      transactionRef: transaction.reference,
+      errorMessage: error.message,
+    });
   }
 };
 
-// Handle generic payment webhook
-const handlePaymentWebhook = async (req, res) => {
+/**
+ * Send purchase success email
+ */
+const sendPurchaseSuccessEmail = async ({
+  customerEmail,
+  productName,
+  phoneNumber,
+  originalAmount,
+  discountedAmount,
+  transactionRef,
+}) => {
   try {
-    const { event, data } = req.body;
+    console.log('📧 Sending purchase success email to:', customerEmail);
     
-    console.log('Payment webhook received:', event, data);
+    const subject = `${productName} Purchase Completed - MaralemPay`;
+    const savings = originalAmount - discountedAmount;
     
-    // Handle different payment events
-    switch (event) {
-      case 'payment.success':
-        // Handle successful payment
-        break;
-      case 'payment.failed':
-        // Handle failed payment
-        break;
-      default:
-        console.log('Unknown webhook event:', event);
-    }
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #1976D2; margin: 0;">MaralemPay</h1>
+        </div>
+        
+        <div style="background-color: #f8f9fa; padding: 30px; border-radius: 8px; margin-bottom: 20px;">
+          <h2 style="color: #333; margin-top: 0;">🎉 Purchase Completed Successfully!</h2>
+          
+          <div style="background-color: white; padding: 20px; border-radius: 6px; margin: 20px 0;">
+            <h3 style="color: #1976D2; margin-top: 0;">Purchase Details</h3>
+            <p><strong>Product:</strong> ${productName}</p>
+            <p><strong>Phone Number:</strong> ${phoneNumber}</p>
+            <p><strong>Original Price:</strong> ₦${originalAmount}</p>
+            <p><strong>Amount Paid:</strong> ₦${discountedAmount}</p>
+            <p><strong>You Saved:</strong> ₦${savings}</p>
+            <p><strong>Transaction Ref:</strong> ${transactionRef}</p>
+          </div>
+          
+          <p style="color: #666; font-size: 16px; margin-bottom: 0;">
+            Your ${productName.toLowerCase()} has been successfully delivered to ${phoneNumber}.
+          </p>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+          <p style="color: #999; font-size: 12px; margin: 0;">
+            Thank you for choosing MaralemPay!
+          </p>
+          <p style="color: #999; font-size: 12px; margin: 5px 0 0 0;">
+            © 2025 MaralemPay. All rights reserved.
+          </p>
+        </div>
+      </div>
+    `;
     
-    res.status(200).json({ status: 'success' });
+    const textContent = `
+      MaralemPay - Purchase Completed Successfully!
+      
+      Product: ${productName}
+      Phone Number: ${phoneNumber}
+      Original Price: ₦${originalAmount}
+      Amount Paid: ₦${discountedAmount}
+      You Saved: ₦${savings}
+      Transaction Ref: ${transactionRef}
+      
+      Your ${productName.toLowerCase()} has been successfully delivered to ${phoneNumber}.
+      
+      Thank you for choosing MaralemPay!
+      
+      © 2025 MaralemPay. All rights reserved.
+    `;
+    
+    await emailService.sendCustomEmail({
+      to: customerEmail,
+      subject: subject,
+      htmlContent: htmlContent,
+      textContent: textContent,
+    });
+    
+    console.log('✅ Purchase success email sent successfully');
+    
   } catch (error) {
-    console.error('Payment webhook error:', error);
-    res.status(500).json({ status: 'error', message: error.message });
+    console.error('❌ Error sending purchase success email:', error);
   }
 };
 
-// Handle bill payment callback from Flutterwave
-const handleBillPaymentCallback = async (req, res) => {
+/**
+ * Send purchase failure email
+ */
+const sendPurchaseFailureEmail = async ({
+  customerEmail,
+  productName,
+  phoneNumber,
+  originalAmount,
+  discountedAmount,
+  transactionRef,
+  errorMessage,
+}) => {
   try {
-    const { event, data } = req.body;
+    console.log('📧 Sending purchase failure email to:', customerEmail);
     
-    console.log('Bill payment webhook received:', event, data);
+    const subject = `${productName} Purchase Failed - MaralemPay`;
     
-    if (event === 'charge.completed') {
-      const { tx_ref, status, id } = data;
-      
-      // Find the transaction
-      const transaction = await Transaction.findOne({ txRef: tx_ref });
-      
-      if (!transaction) {
-        console.log('Transaction not found for tx_ref:', tx_ref);
-        return res.status(404).json({ status: 'error', message: 'Transaction not found' });
-      }
-      
-      if (status === 'successful') {
-        // Update transaction status
-        transaction.status = 'paid';
-        transaction.paymentDetails = data;
-        transaction.paidAt = new Date();
-        await transaction.save();
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #1976D2; margin: 0;">MaralemPay</h1>
+        </div>
         
-        // Trigger bill delivery
-        const billPaymentData = {
-          country: 'NG',
-          customer: transaction.phoneNumber,
-          amount: transaction.originalAmount,
-          type: transaction.billerCode,
-          reference: transaction.txRef,
-          biller_name: transaction.metadata?.biller_name || 'MTN'
-        };
-        
-        const billResult = await flutterwaveService.purchaseBill(billPaymentData);
-        
-        if (billResult.success) {
-          transaction.status = 'completed';
-          transaction.billDetails = billResult.data;
-          transaction.completedAt = new Date();
-          await transaction.save();
+        <div style="background-color: #fff3cd; padding: 30px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffc107;">
+          <h2 style="color: #856404; margin-top: 0;">⚠️ Purchase Failed</h2>
           
-          console.log('Bill payment completed successfully:', tx_ref);
-        } else {
-          transaction.status = 'bill_failed';
-          transaction.billError = billResult.message;
-          await transaction.save();
+          <div style="background-color: white; padding: 20px; border-radius: 6px; margin: 20px 0;">
+            <h3 style="color: #856404; margin-top: 0;">Purchase Details</h3>
+            <p><strong>Product:</strong> ${productName}</p>
+            <p><strong>Phone Number:</strong> ${phoneNumber}</p>
+            <p><strong>Amount Paid:</strong> ₦${discountedAmount}</p>
+            <p><strong>Transaction Ref:</strong> ${transactionRef}</p>
+            <p><strong>Error:</strong> ${errorMessage}</p>
+          </div>
           
-          console.log('Bill delivery failed:', tx_ref, billResult.message);
-        }
-      } else {
-        // Payment failed
-        transaction.status = 'failed';
-        transaction.paymentDetails = data;
-        await transaction.save();
+          <p style="color: #856404; font-size: 16px; margin-bottom: 0;">
+            Unfortunately, we were unable to complete your ${productName.toLowerCase()} purchase. 
+            Your payment has been processed, but the service delivery failed.
+          </p>
+        </div>
         
-        console.log('Bill payment failed:', tx_ref, status);
-      }
-    }
+        <div style="background-color: #d1ecf1; padding: 20px; border-radius: 6px; margin: 20px 0;">
+          <h3 style="color: #0c5460; margin-top: 0;">What happens next?</h3>
+          <ul style="color: #0c5460;">
+            <li>Your payment will be refunded within 24-48 hours</li>
+            <li>You can try the purchase again</li>
+            <li>Contact support if you need assistance</li>
+          </ul>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+          <p style="color: #999; font-size: 12px; margin: 0;">
+            We apologize for any inconvenience caused.
+          </p>
+          <p style="color: #999; font-size: 12px; margin: 5px 0 0 0;">
+            © 2025 MaralemPay. All rights reserved.
+          </p>
+        </div>
+      </div>
+    `;
     
-    res.status(200).json({ status: 'success' });
+    const textContent = `
+      MaralemPay - Purchase Failed
+      
+      Product: ${productName}
+      Phone Number: ${phoneNumber}
+      Amount Paid: ₦${discountedAmount}
+      Transaction Ref: ${transactionRef}
+      Error: ${errorMessage}
+      
+      Unfortunately, we were unable to complete your ${productName.toLowerCase()} purchase. 
+      Your payment has been processed, but the service delivery failed.
+      
+      What happens next?
+      - Your payment will be refunded within 24-48 hours
+      - You can try the purchase again
+      - Contact support if you need assistance
+      
+      We apologize for any inconvenience caused.
+      
+      © 2025 MaralemPay. All rights reserved.
+    `;
+    
+    await emailService.sendCustomEmail({
+      to: customerEmail,
+      subject: subject,
+      htmlContent: htmlContent,
+      textContent: textContent,
+    });
+    
+    console.log('✅ Purchase failure email sent successfully');
+    
   } catch (error) {
-    console.error('Bill payment webhook error:', error);
-    res.status(500).json({ status: 'error', message: error.message });
+    console.error('❌ Error sending purchase failure email:', error);
   }
 };
 
 module.exports = {
   handleFlutterwaveWebhook,
-  handlePaymentWebhook,
-  handleBillPaymentCallback
+  processSuccessfulPayment,
+  processBillPayment,
 };

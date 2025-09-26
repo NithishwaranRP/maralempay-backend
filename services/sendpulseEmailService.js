@@ -144,6 +144,49 @@ class SendPulseEmailService {
     }
   }
 
+  async sendCustomEmail({ to, subject, htmlContent, textContent }) {
+    try {
+      console.log(`📧 Sending custom email to ${to} via SendPulse...`);
+
+      const accessToken = await this.getAccessToken();
+
+      const emailData = {
+        email: {
+          html: htmlContent,
+          text: textContent,
+          subject: subject,
+          from: {
+            name: process.env.EMAIL_FROM_NAME || 'MaralemPay Support',
+            email: process.env.EMAIL_FROM || 'hello@maralempay.com.ng'
+          },
+          to: [
+            {
+              email: to
+            }
+          ]
+        }
+      };
+
+      const response = await axios.post('https://api.sendpulse.com/smtp/emails', emailData, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log(`✅ Custom email sent successfully to ${to} via SendPulse`);
+      return { 
+        success: true, 
+        messageId: response.data.id || 'sendpulse-' + Date.now(),
+        provider: 'sendpulse'
+      };
+
+    } catch (error) {
+      console.error(`❌ Error sending custom email to ${to} via SendPulse:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
   async testConnection() {
     try {
       console.log('🧪 Testing SendPulse API connection...');

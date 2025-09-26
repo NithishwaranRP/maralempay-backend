@@ -18,7 +18,7 @@ const getSubscriptionPlans = async (req, res) => {
         description: 'Get 10% discount on all airtime, data, and bill payments for 6 months',
         duration: 6,
         durationUnit: 'months',
-        amount: 100,
+        amount: 4500,
         currency: 'NGN',
         discountPercentage: 10,
         benefits: [
@@ -146,7 +146,7 @@ const purchaseSubscription = async (req, res) => {
     // Define subscription plan details
     const planDetails = {
       '6_months': {
-        amount: 100,
+        amount: 4500,
         duration: 6,
         durationUnit: 'months',
         discountPercentage: 10

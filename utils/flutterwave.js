@@ -548,6 +548,21 @@ class FlutterwaveService {
     }
   }
 
+  // Create bill payment (wrapper for purchaseBill)
+  async createBillPayment(billsData) {
+    try {
+      console.log('💳 Creating bill payment via Flutterwave Bills API...');
+      return await this.purchaseBill(billsData);
+    } catch (error) {
+      console.error('❌ Error creating bill payment:', error);
+      return {
+        success: false,
+        message: error.message,
+        error: error
+      };
+    }
+  }
+
   // Purchase bill using Bills API
   // ENHANCED: Better error handling and logging for automated charging
   async purchaseBill(billsData) {

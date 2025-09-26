@@ -321,7 +321,7 @@ const updateProfile = async (req, res) => {
 const initializeSubscription = async (req, res) => {
   try {
     const user = req.user;
-    const subscriptionAmount = parseFloat(process.env.SUBSCRIPTION_AMOUNT) || 100;
+    const subscriptionAmount = parseFloat(process.env.SUBSCRIPTION_AMOUNT) || 4500;
 
     // Check if user is already subscribed
     if (user.isSubscribed && user.subscriptionExpiry > new Date()) {
