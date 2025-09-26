@@ -1,255 +1,292 @@
 const nodemailer = require('nodemailer');
 
-class EmailService {
-  constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST || 'mail.maralempay.com.ng',
-      port: process.env.EMAIL_PORT || 465,
-      secure: true, // true for 465, false for other ports
-      auth: {
-        user: process.env.EMAIL_USER || 'hello@maralempay.com.ng',
-        pass: process.env.EMAIL_PASS || 'EzinwokE1@'
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
-  }
+// Email configuration
+const EMAIL_CONFIG = {
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: process.env.SMTP_PORT || 587,
+  secure: false, // true for 465, false for other ports
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+};
 
-  /**
-   * Send OTP email for verification
-   */
-  async sendOTPEmail(to, otp, purpose = 'verification') {
-    try {
-      const subject = `MaralemPay ${purpose.charAt(0).toUpperCase() + purpose.slice(1)} Code`;
-      const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #1976D2, #1565C0); padding: 20px; text-align: center;">
-            <h1 style="color: white; margin: 0;">MaralemPay</h1>
-          </div>
-          <div style="padding: 30px; background: #f9f9f9;">
-            <h2 style="color: #333; margin-bottom: 20px;">Your ${purpose} code</h2>
-            <p style="color: #666; font-size: 16px; line-height: 1.5;">
-              Use the following code to ${purpose} your account:
-            </p>
-            <div style="background: white; border: 2px solid #1976D2; border-radius: 8px; padding: 20px; text-align: center; margin: 20px 0;">
-              <h1 style="color: #1976D2; font-size: 32px; margin: 0; letter-spacing: 5px;">${otp}</h1>
-            </div>
-            <p style="color: #666; font-size: 14px;">
-              This code will expire in 10 minutes. Do not share this code with anyone.
-            </p>
-            <p style="color: #999; font-size: 12px; margin-top: 30px;">
-              If you didn't request this code, please ignore this email.
-            </p>
-          </div>
-          <div style="background: #333; color: white; padding: 15px; text-align: center; font-size: 12px;">
-            © 2025 MaralemPay. All rights reserved.
-          </div>
+// Create transporter
+const transporter = nodemailer.createTransporter(EMAIL_CONFIG);
+
+/**
+ * Send email with template
+ */
+const sendEmail = async ({ to, subject, template, data }) => {
+  try {
+    const htmlContent = generateEmailTemplate(template, data);
+    
+    const mailOptions = {
+      from: `"MaralemPay" <${process.env.SMTP_USER}>`,
+      to: to,
+      subject: subject,
+      html: htmlContent,
+    };
+
+    const result = await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent successfully:', result.messageId);
+    return result;
+  } catch (error) {
+    console.error('❌ Error sending email:', error);
+    throw error;
+  }
+};
+
+/**
+ * Generate email template based on type
+ */
+const generateEmailTemplate = (template, data) => {
+  switch (template) {
+    case 'subscription_success':
+      return generateSubscriptionSuccessTemplate(data);
+    case 'bill_payment_success':
+      return generateBillPaymentSuccessTemplate(data);
+    case 'bill_payment_failed':
+      return generateBillPaymentFailedTemplate(data);
+    default:
+      return generateDefaultTemplate(data);
+  }
+};
+
+/**
+ * Subscription success email template
+ */
+const generateSubscriptionSuccessTemplate = (data) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Subscription Successful</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .benefit { background: white; margin: 10px 0; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; }
+        .amount { font-size: 24px; font-weight: bold; color: #667eea; }
+        .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🎉 Welcome to MaralemPay Premium!</h1>
+          <p>Your subscription has been activated successfully</p>
         </div>
-      `;
-
-      const mailOptions = {
-        from: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
-        to: to,
-        subject: subject,
-        html: html
-      };
-
-      const result = await this.transporter.sendMail(mailOptions);
-      console.log('OTP email sent successfully:', result.messageId);
-      return { success: true, messageId: result.messageId };
-    } catch (error) {
-      console.error('Error sending OTP email:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * Send transaction receipt email
-   */
-  async sendTransactionReceipt(to, transaction) {
-    try {
-      const subject = `MaralemPay Transaction Receipt - ${transaction.type}`;
-      const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #1976D2, #1565C0); padding: 20px; text-align: center;">
-            <h1 style="color: white; margin: 0;">MaralemPay</h1>
+        <div class="content">
+          <h2>Hello ${data.userName}!</h2>
+          <p>Congratulations! Your premium subscription has been activated and you now have access to exclusive benefits.</p>
+          
+          <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3>Subscription Details:</h3>
+            <p><strong>Amount Paid:</strong> <span class="amount">₦${data.amount}</span></p>
+            <p><strong>Valid Until:</strong> ${data.expiryDate}</p>
+            <p><strong>Duration:</strong> 6 months</p>
           </div>
-          <div style="padding: 30px; background: #f9f9f9;">
-            <h2 style="color: #333; margin-bottom: 20px;">Transaction Receipt</h2>
-            <div style="background: white; border-radius: 8px; padding: 20px; margin: 20px 0;">
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-weight: bold;">Transaction ID:</td>
-                  <td style="padding: 10px 0; border-bottom: 1px solid #eee;">${transaction._id}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-weight: bold;">Type:</td>
-                  <td style="padding: 10px 0; border-bottom: 1px solid #eee;">${transaction.type}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-weight: bold;">Amount:</td>
-                  <td style="padding: 10px 0; border-bottom: 1px solid #eee;">₦${transaction.amount}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-weight: bold;">Status:</td>
-                  <td style="padding: 10px 0; border-bottom: 1px solid #eee; color: ${transaction.status === 'successful' ? 'green' : 'red'};">${transaction.status}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-weight: bold;">Date:</td>
-                  <td style="padding: 10px 0; border-bottom: 1px solid #eee;">${new Date(transaction.createdAt).toLocaleString()}</td>
-                </tr>
-                ${transaction.description ? `
-                <tr>
-                  <td style="padding: 10px 0; font-weight: bold;">Description:</td>
-                  <td style="padding: 10px 0;">${transaction.description}</td>
-                </tr>
-                ` : ''}
-              </table>
+
+          <h3>Your Premium Benefits:</h3>
+          ${data.benefits.map(benefit => `
+            <div class="benefit">
+              <strong>✓ ${benefit}</strong>
             </div>
-            <p style="color: #666; font-size: 14px;">
-              Thank you for using MaralemPay. Keep this receipt for your records.
-            </p>
+          `).join('')}
+
+          <div style="background: #e8f5e8; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3>🚀 Start Saving Today!</h3>
+            <p>You can now enjoy 10% discount on all airtime and data purchases. Start buying for yourself and your loved ones!</p>
           </div>
-          <div style="background: #333; color: white; padding: 15px; text-align: center; font-size: 12px;">
-            © 2025 MaralemPay. All rights reserved.
-          </div>
+
+          <p>Thank you for choosing MaralemPay. If you have any questions, feel free to contact our support team.</p>
         </div>
-      `;
-
-      const mailOptions = {
-        from: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
-        to: to,
-        subject: subject,
-        html: html
-      };
-
-      const result = await this.transporter.sendMail(mailOptions);
-      console.log('Transaction receipt email sent successfully:', result.messageId);
-      return { success: true, messageId: result.messageId };
-    } catch (error) {
-      console.error('Error sending transaction receipt email:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * Send password reset email
-   */
-  async sendPasswordResetEmail(to, resetToken) {
-    try {
-      const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-      const subject = 'MaralemPay Password Reset';
-      const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #1976D2, #1565C0); padding: 20px; text-align: center;">
-            <h1 style="color: white; margin: 0;">MaralemPay</h1>
-          </div>
-          <div style="padding: 30px; background: #f9f9f9;">
-            <h2 style="color: #333; margin-bottom: 20px;">Password Reset Request</h2>
-            <p style="color: #666; font-size: 16px; line-height: 1.5;">
-              You requested to reset your password. Click the button below to reset your password:
-            </p>
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${resetUrl}" style="background: #1976D2; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
-                Reset Password
-              </a>
-            </div>
-            <p style="color: #666; font-size: 14px;">
-              This link will expire in 1 hour. If you didn't request this password reset, please ignore this email.
-            </p>
-            <p style="color: #999; font-size: 12px; margin-top: 30px;">
-              If the button doesn't work, copy and paste this link into your browser:<br>
-              <a href="${resetUrl}" style="color: #1976D2;">${resetUrl}</a>
-            </p>
-          </div>
-          <div style="background: #333; color: white; padding: 15px; text-align: center; font-size: 12px;">
-            © 2025 MaralemPay. All rights reserved.
-          </div>
+        <div class="footer">
+          <p>© 2024 MaralemPay. All rights reserved.</p>
+          <p>This email was sent to ${data.userName}. If you have any questions, contact us at support@maralempay.com.ng</p>
         </div>
-      `;
+      </div>
+    </body>
+    </html>
+  `;
+};
 
-      const mailOptions = {
-        from: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
-        to: to,
-        subject: subject,
-        html: html
-      };
-
-      const result = await this.transporter.sendMail(mailOptions);
-      console.log('Password reset email sent successfully:', result.messageId);
-      return { success: true, messageId: result.messageId };
-    } catch (error) {
-      console.error('Error sending password reset email:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * Send welcome email to new users
-   */
-  async sendWelcomeEmail(to, userName) {
-    try {
-      const subject = 'Welcome to MaralemPay!';
-      const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #1976D2, #1565C0); padding: 20px; text-align: center;">
-            <h1 style="color: white; margin: 0;">MaralemPay</h1>
+/**
+ * Bill payment success email template
+ */
+const generateBillPaymentSuccessTemplate = (data) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Purchase Complete</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .success-box { background: #e8f5e8; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4caf50; }
+        .amount { font-size: 24px; font-weight: bold; color: #667eea; }
+        .savings { color: #4caf50; font-weight: bold; }
+        .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🎉 Purchase Complete!</h1>
+          <p>Your ${data.productName} has been delivered successfully</p>
+        </div>
+        <div class="content">
+          <h2>Hello ${data.userName}!</h2>
+          
+          <div class="success-box">
+            <h3>✅ Transaction Successful</h3>
+            <p>Your ${data.productName} has been delivered to <strong>${data.customerId}</strong></p>
           </div>
-          <div style="padding: 30px; background: #f9f9f9;">
-            <h2 style="color: #333; margin-bottom: 20px;">Welcome to MaralemPay, ${userName}!</h2>
-            <p style="color: #666; font-size: 16px; line-height: 1.5;">
-              Thank you for joining MaralemPay! You can now enjoy:
-            </p>
-            <ul style="color: #666; font-size: 16px; line-height: 1.8;">
-              <li>Easy airtime and data purchases</li>
-              <li>10% discount on all transactions</li>
-              <li>Referral rewards and bonuses</li>
-              <li>Secure and fast transactions</li>
+
+          <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3>Transaction Details:</h3>
+            <p><strong>Product:</strong> ${data.productName}</p>
+            <p><strong>Recipient:</strong> ${data.customerId}</p>
+            <p><strong>Full Price:</strong> <span class="amount">₦${data.fullPrice}</span></p>
+            <p><strong>You Paid:</strong> <span class="amount">₦${data.discountedAmount}</span></p>
+            <p><strong>You Saved:</strong> <span class="savings">₦${data.discountAmount}</span></p>
+            <p><strong>Transaction ID:</strong> ${data.transactionId}</p>
+            <p><strong>Completed:</strong> ${data.completedAt.toLocaleString()}</p>
+          </div>
+
+          <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3>💡 Premium Benefit</h3>
+            <p>Thanks to your premium subscription, you saved <strong>₦${data.discountAmount}</strong> on this purchase!</p>
+          </div>
+
+          <p>Thank you for using MaralemPay. Keep enjoying your premium benefits!</p>
+        </div>
+        <div class="footer">
+          <p>© 2024 MaralemPay. All rights reserved.</p>
+          <p>This email was sent to ${data.userName}. If you have any questions, contact us at support@maralempay.com.ng</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
+
+/**
+ * Bill payment failed email template
+ */
+const generateBillPaymentFailedTemplate = (data) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Purchase Issue</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .error-box { background: #ffe6e6; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ff6b6b; }
+        .support-box { background: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2196f3; }
+        .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>⚠️ Purchase Issue</h1>
+          <p>We encountered an issue with your ${data.productName} purchase</p>
+        </div>
+        <div class="content">
+          <h2>Hello ${data.userName}!</h2>
+          
+          <div class="error-box">
+            <h3>❌ Transaction Failed</h3>
+            <p>We encountered an issue while processing your ${data.productName} purchase for <strong>${data.customerId}</strong>.</p>
+            <p><strong>Error:</strong> ${data.errorMessage}</p>
+          </div>
+
+          <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3>Transaction Details:</h3>
+            <p><strong>Product:</strong> ${data.productName}</p>
+            <p><strong>Recipient:</strong> ${data.customerId}</p>
+            <p><strong>Transaction ID:</strong> ${data.transactionId}</p>
+            <p><strong>Status:</strong> Failed</p>
+          </div>
+
+          <div class="support-box">
+            <h3>🛠️ What's Next?</h3>
+            <p>Don't worry! Your payment has been processed and we're working to resolve this issue.</p>
+            <p><strong>Options:</strong></p>
+            <ul>
+              <li>We'll automatically retry the transaction</li>
+              <li>If the issue persists, we'll process a full refund</li>
+              <li>Contact our support team for immediate assistance</li>
             </ul>
-            <div style="background: white; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
-              <h3 style="color: #1976D2; margin-top: 0;">Get Started</h3>
-              <p style="color: #666; margin-bottom: 20px;">Subscribe now to unlock all features and start saving!</p>
-              <a href="${process.env.FRONTEND_URL}/subscription" style="background: #1976D2; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
-                Subscribe Now
-              </a>
-            </div>
+            <p><strong>Support Email:</strong> <a href="mailto:${data.supportEmail}">${data.supportEmail}</a></p>
           </div>
-          <div style="background: #333; color: white; padding: 15px; text-align: center; font-size: 12px;">
-            © 2025 MaralemPay. All rights reserved.
-          </div>
+
+          <p>We apologize for any inconvenience. Our team is working to resolve this issue as quickly as possible.</p>
         </div>
-      `;
+        <div class="footer">
+          <p>© 2024 MaralemPay. All rights reserved.</p>
+          <p>This email was sent to ${data.userName}. If you have any questions, contact us at support@maralempay.com.ng</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
 
-      const mailOptions = {
-        from: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
-        to: to,
-        subject: subject,
-        html: html
-      };
+/**
+ * Default email template
+ */
+const generateDefaultTemplate = (data) => {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>MaralemPay Notification</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+        .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+        .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>MaralemPay</h1>
+          <p>Your trusted payment partner</p>
+        </div>
+        <div class="content">
+          <h2>Hello!</h2>
+          <p>This is a notification from MaralemPay.</p>
+          <p>Thank you for using our services.</p>
+        </div>
+        <div class="footer">
+          <p>© 2024 MaralemPay. All rights reserved.</p>
+          <p>If you have any questions, contact us at support@maralempay.com.ng</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+};
 
-      const result = await this.transporter.sendMail(mailOptions);
-      console.log('Welcome email sent successfully:', result.messageId);
-      return { success: true, messageId: result.messageId };
-    } catch (error) {
-      console.error('Error sending welcome email:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * Test email configuration
-   */
-  async testEmailConfiguration() {
-    try {
-      await this.transporter.verify();
-      console.log('Email configuration is valid');
-      return { success: true, message: 'Email configuration is valid' };
-    } catch (error) {
-      console.error('Email configuration error:', error);
-      return { success: false, error: error.message };
-    }
-  }
-}
-
-module.exports = new EmailService();
+module.exports = {
+  sendEmail,
+};
