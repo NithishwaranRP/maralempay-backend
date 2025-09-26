@@ -146,7 +146,7 @@ const purchaseSubscription = async (req, res) => {
     // Define subscription plan details
     const planDetails = {
       '6_months': {
-        amount: 4500,
+        amount: 100,
         duration: 6,
         durationUnit: 'months',
         discountPercentage: 10

@@ -85,6 +85,7 @@ app.use('/api/webhook', require('./routes/webhookRoutes'));
 app.use('/api/bills-api', require('./routes/billsApiRoutes'));
 app.use('/api/referrals', require('./routes/referrals'));
 app.use('/api/payment', require('./routes/paymentVerificationRoutes'));
+app.use('/api/maralem-bills', require('./routes/maralemBillsRoutes'));
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -102,7 +103,8 @@ app.get('/', (req, res) => {
       wallet: '/api/wallet',
       subscription: '/api/subscription',
       bills: '/api/bills',
-      referrals: '/api/referrals'
+      referrals: '/api/referrals',
+      maralemBills: '/api/maralem-bills'
     },
     documentation: 'https://github.com/your-repo/maralempay-api'
   });

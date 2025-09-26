@@ -57,7 +57,7 @@ async function manualVerifyPayment() {
     
     // Step 4: Check if this is a subscription payment
     const paymentAmount = parseFloat(paymentData.amount);
-    const subscriptionAmount = parseFloat(process.env.SUBSCRIPTION_AMOUNT || 4500);
+    const subscriptionAmount = parseFloat(process.env.SUBSCRIPTION_AMOUNT || 100);
     
     if (Math.abs(paymentAmount - subscriptionAmount) < 1) {
       console.log('💳 This is a subscription payment, activating subscription...');

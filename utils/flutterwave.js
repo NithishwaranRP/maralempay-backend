@@ -102,7 +102,7 @@ class FlutterwaveService {
   // Initialize subscription payment
   async initializeSubscriptionPayment(user) {
     try {
-      const amount = process.env.SUBSCRIPTION_AMOUNT || 4500;
+      const amount = process.env.SUBSCRIPTION_AMOUNT || 100;
       const txRef = `SUB_${user.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
       const payload = {

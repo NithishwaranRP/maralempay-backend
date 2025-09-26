@@ -74,7 +74,7 @@ class FlutterwaveFlowTester {
       },
       customizations: {
         title: 'MaralemPay Subscription',
-        description: '6 months Premium Plan - ₦4500'
+        description: '6 months Premium Plan - ₦100'
       },
       meta: {
         user_id: 'test_user_123',

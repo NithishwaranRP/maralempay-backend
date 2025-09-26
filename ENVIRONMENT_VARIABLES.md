@@ -33,7 +33,7 @@ FLW_BASE_URL=https://api.flutterwave.com/v3
 
 ### **Subscription Configuration**
 ```bash
-SUBSCRIPTION_AMOUNT=4500
+SUBSCRIPTION_AMOUNT=100
 SUBSCRIPTION_DURATION=90
 SUBSCRIPTION_CURRENCY=NGN
 ```
