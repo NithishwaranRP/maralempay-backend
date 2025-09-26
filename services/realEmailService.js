@@ -142,6 +142,8 @@ class RealEmailService {
       } catch (error) {
         console.log(`❌ Gmail fallback failed: ${error.message}`);
       }
+    } else {
+      console.log('⚠️  Gmail credentials not found (GMAIL_USER, GMAIL_PASS)');
     }
     
     // If all configurations fail, fall back to mock mode
