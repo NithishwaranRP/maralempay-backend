@@ -52,20 +52,6 @@ const userSchema = new mongoose.Schema({
   subscriptionExpiry: {
     type: Date
   },
-  subscriptionAmount: {
-    type: Number,
-    default: 0
-  },
-  pendingSubscription: {
-    txRef: String,
-    amount: Number,
-    status: {
-      type: String,
-      enum: ['pending', 'completed', 'failed'],
-      default: 'pending'
-    },
-    createdAt: Date
-  },
   isActive: {
     type: Boolean,
     default: true

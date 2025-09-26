@@ -79,7 +79,6 @@ app.use('/api/web', require('./routes/webRoutes'));
 app.use('/api/debug', require('./routes/debugRoutes'));
 app.use('/api/wallet', require('./routes/walletRoutes'));
 app.use('/api/subscription', require('./routes/subscriptionRoutes'));
-app.use('/api/bill', require('./routes/billPaymentRoutes'));
 app.use('/api/bills', require('./routes/billsRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));
 app.use('/api/webhook', require('./routes/webhookRoutes'));

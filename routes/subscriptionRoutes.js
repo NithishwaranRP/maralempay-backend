@@ -1,63 +1,42 @@
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { authenticateUser } = require('../middleware/auth');
+const {
+  getSubscriptionPlans,
+  purchaseSubscription,
+  verifySubscriptionPayment,
+  getSubscriptionStatus,
+  getSubscriptionHistory,
+  manualActivateSubscription
+} = require('../controllers/subscriptionController');
 
-// Import controller functions individually to catch any undefined imports
-let initiateSubscription, verifySubscription, getSubscriptionStatus;
+// All subscription routes require authentication
+router.use(authenticateUser);
 
-try {
-  const controller = require('../controllers/subscriptionController');
-  
-  // Log what's actually exported
-  console.log('✅ Subscription controller exports:', Object.keys(controller));
-  
-  // Destructure with error checking
-  initiateSubscription = controller.initiateSubscription;
-  verifySubscription = controller.verifySubscription;
-  getSubscriptionStatus = controller.getSubscriptionStatus;
-  
-  // Verify all functions are defined
-  if (typeof initiateSubscription !== 'function') {
-    throw new Error('initiateSubscription is not a function: ' + typeof initiateSubscription);
-  }
-  if (typeof verifySubscription !== 'function') {
-    throw new Error('verifySubscription is not a function: ' + typeof verifySubscription);
-  }
-  if (typeof getSubscriptionStatus !== 'function') {
-    throw new Error('getSubscriptionStatus is not a function: ' + typeof getSubscriptionStatus);
-  }
-  
-  console.log('✅ All subscription controller functions verified');
-  
-} catch (error) {
-  console.error('❌ Error importing subscription controller:', error.message);
-  console.error('Stack:', error.stack);
-  
-  // Create fallback functions to prevent server crash
-  initiateSubscription = (req, res) => {
-    res.status(500).json({ success: false, message: 'Controller import error' });
-  };
-  verifySubscription = (req, res) => {
-    res.status(500).json({ success: false, message: 'Controller import error' });
-  };
-  getSubscriptionStatus = (req, res) => {
-    res.status(500).json({ success: false, message: 'Controller import error' });
-  };
-}
+// Get available subscription plans
+// GET /api/subscription/plans
+router.get('/plans', getSubscriptionPlans);
 
-// @route   POST /api/subscription/initiate
-// @desc    Initiate subscription payment
-// @access  Private
-router.post('/initiate', auth, initiateSubscription);
+// Purchase subscription
+// POST /api/subscription/purchase
+// Body: { planType }
+router.post('/purchase', purchaseSubscription);
 
-// @route   POST /api/subscription/verify
-// @desc    Verify subscription payment
-// @access  Private
-router.post('/verify', auth, verifySubscription);
+// Verify subscription payment
+// GET /api/subscription/verify/:payment_ref
+router.get('/verify/:payment_ref', verifySubscriptionPayment);
 
-// @route   GET /api/subscription/status
-// @desc    Get subscription status
-// @access  Private
-router.get('/status', auth, getSubscriptionStatus);
+// Get user's subscription status
+// GET /api/subscription/status
+router.get('/status', getSubscriptionStatus);
+
+// Get subscription history
+// GET /api/subscription/history?page=1&limit=10
+router.get('/history', getSubscriptionHistory);
+
+// Manually activate subscription (for testing or webhook failures)
+// POST /api/subscription/manual-activate
+// Body: { payment_ref }
+router.post('/manual-activate', manualActivateSubscription);
 
 module.exports = router;
