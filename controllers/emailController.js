@@ -1,4 +1,4 @@
-const emailService = require('../services/simpleEmailService');
+const emailService = require('../services/sendpulseEmailService');
 const VerificationCode = require('../models/VerificationCode');
 const User = require('../models/User');
 const { validationResult } = require('express-validator');
