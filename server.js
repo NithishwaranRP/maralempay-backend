@@ -62,6 +62,12 @@ mongoose.connect(process.env.MONGODB_URI, {
 .then(() => console.log('✅ MongoDB connected successfully'))
 .catch(err => console.error('❌ MongoDB connection error:', err));
 
+// Debug middleware to log all incoming requests
+app.use((req, res, next) => {
+  console.log(`🔍 Incoming request: ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/transactions', require('./routes/transactions'));
@@ -132,11 +138,18 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Debug middleware for unmatched routes
+app.use((req, res, next) => {
+  console.log(`❌ Unmatched route: ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ 
     success: false, 
-    message: 'Route not found' 
+    message: 'Endpoint not found',
+    path: req.originalUrl
   });
 });
 
@@ -145,7 +158,7 @@ module.exports = app;
 
 // Only listen on port when not in Vercel environment
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-  const PORT = process.env.PORT || 5000;
+  const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`🚀 MaralemPay API server running on port ${PORT}`);
     console.log(`📱 Environment: ${process.env.NODE_ENV || 'development'}`);

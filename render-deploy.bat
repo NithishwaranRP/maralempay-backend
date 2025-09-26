@@ -7,3 +7,4 @@ git push origin main
 echo Render deployment initiated with server.js configuration!
 echo The /api/email/reset-password endpoint should now be available.
 pause
+

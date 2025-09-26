@@ -178,29 +178,21 @@ class EmailService {
     // Initialize email queue
     this.emailQueue = new EmailQueue();
     
-    console.log('📧 Using MaralemPay SMTP as primary email service');
+    console.log('📧 Using Gmail SMTP as primary email service for Render compatibility');
     
-    // MaralemPay SMTP configuration with working settings
+    // Gmail SMTP configuration - more reliable for Render deployment
     this.transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST || 'mail.maralempay.com.ng',
-      port: parseInt(process.env.EMAIL_PORT) || 465, // Use 465 (SSL)
-      secure: true, // true for 465, false for other ports
+      service: 'gmail',
       auth: {
-        user: process.env.EMAIL_USER || 'hello@maralempay.com.ng',
-        pass: process.env.EMAIL_PASS || 'EzinwokE1@'
+        user: process.env.GMAIL_USER || 'maralempay.app@gmail.com',
+        pass: process.env.GMAIL_APP_PASSWORD || 'your_gmail_app_password'
       },
-      tls: {
-        rejectUnauthorized: false, // Allow self-signed certificates
-        ciphers: 'SSLv3'
-      },
-      connectionTimeout: 30000, // 30 seconds
-      greetingTimeout: 15000, // 15 seconds
-      socketTimeout: 30000, // 30 seconds
-      pool: false, // Disable pooling for better reliability
-      maxConnections: 1, // Single connection
-      maxMessages: 1, // One message per connection
-      rateDelta: 20000, // Rate limiting
-      rateLimit: 1 // Maximum 1 email per rateDelta
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 5000, // 5 seconds
+      socketTimeout: 10000, // 10 seconds
+      pool: false,
+      maxConnections: 1,
+      maxMessages: 1
     });
 
     // Alternative configurations for different ports
@@ -259,8 +251,26 @@ class EmailService {
       }
     ];
 
-    // No fallback - only MaralemPay SMTP
-    this.fallbackTransporter = null;
+    // MaralemPay SMTP as fallback
+    this.fallbackTransporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST || 'mail.maralempay.com.ng',
+      port: parseInt(process.env.EMAIL_PORT) || 465,
+      secure: true,
+      auth: {
+        user: process.env.EMAIL_USER || 'hello@maralempay.com.ng',
+        pass: process.env.EMAIL_PASS || 'EzinwokE1@'
+      },
+      tls: {
+        rejectUnauthorized: false,
+        ciphers: 'SSLv3'
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 5000,
+      socketTimeout: 10000,
+      pool: false,
+      maxConnections: 1,
+      maxMessages: 1
+    });
   }
 
   // Generate a 6-digit verification code
@@ -359,29 +369,23 @@ class EmailService {
         html: htmlContent
       };
 
-      // Try primary transporter first
+      // Try primary Gmail transporter first
       try {
         const result = await this.transporter.sendMail(mailOptions);
-        console.log('Verification email sent successfully via primary SMTP:', result.messageId);
+        console.log('Verification email sent successfully via Gmail SMTP:', result.messageId);
         return { success: true, messageId: result.messageId };
       } catch (primaryError) {
-        console.error('Primary SMTP failed:', primaryError.message);
+        console.error('Gmail SMTP failed:', primaryError.message);
         
-        // Try fallback Gmail if available
+        // Try MaralemPay SMTP fallback
         if (this.fallbackTransporter) {
           try {
-            // Update from field for Gmail
-            const fallbackMailOptions = {
-              ...mailOptions,
-              from: process.env.GMAIL_USER || 'MaralemPay@maralempay.com.ng'
-            };
-            
-            const result = await this.fallbackTransporter.sendMail(fallbackMailOptions);
-            console.log('Verification email sent successfully via Gmail fallback:', result.messageId);
+            const result = await this.fallbackTransporter.sendMail(mailOptions);
+            console.log('Verification email sent successfully via MaralemPay SMTP fallback:', result.messageId);
             return { success: true, messageId: result.messageId };
           } catch (fallbackError) {
-            console.error('Gmail fallback also failed:', fallbackError.message);
-            throw new Error(`Both primary and fallback email services failed. Primary: ${primaryError.message}, Fallback: ${fallbackError.message}`);
+            console.error('MaralemPay SMTP fallback also failed:', fallbackError.message);
+            throw new Error(`Both Gmail and MaralemPay SMTP failed. Gmail: ${primaryError.message}, MaralemPay: ${fallbackError.message}`);
           }
         } else {
           throw primaryError;
