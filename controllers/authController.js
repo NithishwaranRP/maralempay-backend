@@ -261,6 +261,14 @@ const getProfile = async (req, res) => {
       });
     }
     
+    // Add subscription status logging for debugging
+    console.log(`[PROFILE] User ${req.user._id} subscription status:`, {
+      isSubscriber: freshUser.isSubscriber,
+      subscriptionStatus: freshUser.subscriptionStatus,
+      subscriptionDate: freshUser.subscriptionDate,
+      subscriptionExpiry: freshUser.subscriptionExpiry
+    });
+    
     res.json({
       success: true,
       data: {
@@ -560,6 +568,47 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// Manual subscription verification endpoint for testing
+const verifySubscriptionStatus = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    // Fetch fresh user data
+    const freshUser = await User.findById(user._id);
+    
+    if (!freshUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Check subscription status
+    const isActiveSubscriber = freshUser.isActiveSubscriber();
+    
+    res.json({
+      success: true,
+      data: {
+        userId: freshUser._id,
+        email: freshUser.email,
+        isSubscriber: freshUser.isSubscriber,
+        subscriptionStatus: freshUser.subscriptionStatus,
+        subscriptionDate: freshUser.subscriptionDate,
+        subscriptionExpiry: freshUser.subscriptionExpiry,
+        isActiveSubscriber: isActiveSubscriber,
+        currentTime: new Date()
+      }
+    });
+  } catch (error) {
+    console.error('Verify subscription status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to verify subscription status',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
@@ -567,6 +616,7 @@ module.exports = {
   updateProfile,
   initializeSubscription,
   verifySubscription,
+  verifySubscriptionStatus,
   verifyEmail,
   resetPassword
 };

@@ -7,6 +7,7 @@ const {
   updateProfile,
   initializeSubscription,
   verifySubscription,
+  verifySubscriptionStatus,
   verifyEmail,
   resetPassword
 } = require('../controllers/authController');
@@ -31,5 +32,6 @@ router.get('/profile', getProfile);
 router.put('/profile', updateProfile);
 router.post('/subscription/initialize', initializeSubscription);
 router.post('/subscription/verify', verifySubscription);
+router.get('/subscription/status', verifySubscriptionStatus);
 
 module.exports = router;

@@ -104,24 +104,46 @@ const verifyPayment = async (req, res) => {
     if (Math.abs(paymentAmount - subscriptionAmount) < 1) { // Allow for minor differences
       console.log('💳 This is a subscription payment, activating subscription...');
       
+      // --> 💡 LOG 1: Confirming update attempt <--
+      console.log(`[SUBSCRIPTION FINALIZE] Verified success for User ID: ${user._id}. Attempting DB update.`);
+      console.log(`[SUBSCRIPTION FINALIZE] Payment amount: ${paymentAmount}, Expected: ${subscriptionAmount}`);
+      
       // Step 5: Activate subscription
       const subscriptionDuration = parseInt(process.env.SUBSCRIPTION_DURATION || 90); // 90 days
       const subscriptionExpiry = new Date();
       subscriptionExpiry.setDate(subscriptionExpiry.getDate() + subscriptionDuration);
       
-      // Update user subscription status
-      await User.findByIdAndUpdate(user._id, {
-        isSubscriber: true,
-        subscriptionStatus: 'active',
-        subscriptionDate: new Date(),
-        subscriptionExpiry: subscriptionExpiry
-      });
+      try {
+        // Update user subscription status
+        const updatedUser = await User.findByIdAndUpdate(user._id, {
+          isSubscriber: true,
+          subscriptionStatus: 'active',
+          subscriptionDate: new Date(),
+          subscriptionExpiry: subscriptionExpiry
+        }, { new: true });
+
+        if (updatedUser) {
+          // --> ✅ LOG 2: Success Confirmation <--
+          console.log(`[SUBSCRIPTION FINALIZE] Success: User ${user._id} is now subscribed until ${updatedUser.subscriptionExpiry}`);
+          console.log(`[SUBSCRIPTION FINALIZE] User subscription status: isSubscriber=${updatedUser.isSubscriber}, subscriptionStatus=${updatedUser.subscriptionStatus}`);
+        } else {
+          // --> ❌ LOG 3: User Not Found/Update Failed <--
+          console.error(`[SUBSCRIPTION FINALIZE] ERROR: User ${user._id} not found or update failed after successful payment.`);
+        }
+      } catch (dbError) {
+        // --> ❌ LOG 4: Database Error Capture <--
+        console.error(`[SUBSCRIPTION FINALIZE] CRITICAL DB ERROR for user ${user._id}:`, dbError.message || dbError);
+        console.error(`[SUBSCRIPTION FINALIZE] DB Error stack:`, dbError.stack);
+        throw new Error('Database update failed post-verification.');
+      }
       
       // Create or update subscription record
+      console.log(`[SUBSCRIPTION FINALIZE] Creating/updating subscription record for user ${user._id}`);
       const existingSubscription = await Subscription.findOne({ user: user._id });
       
       if (existingSubscription) {
         // Extend existing subscription
+        console.log(`[SUBSCRIPTION FINALIZE] Updating existing subscription ${existingSubscription._id}`);
         await Subscription.findByIdAndUpdate(existingSubscription._id, {
           status: 'active',
           amount: paymentAmount,
@@ -130,9 +152,11 @@ const verifyPayment = async (req, res) => {
           paymentReference: verificationRef,
           flutterwaveReference: paymentData.flw_ref
         });
+        console.log(`[SUBSCRIPTION FINALIZE] Subscription record updated successfully`);
       } else {
         // Create new subscription
-        await Subscription.create({
+        console.log(`[SUBSCRIPTION FINALIZE] Creating new subscription record`);
+        const newSubscription = await Subscription.create({
           user: user._id,
           status: 'active',
           amount: paymentAmount,
@@ -142,6 +166,7 @@ const verifyPayment = async (req, res) => {
           paymentReference: verificationRef,
           flutterwaveReference: paymentData.flw_ref
         });
+        console.log(`[SUBSCRIPTION FINALIZE] New subscription record created: ${newSubscription._id}`);
       }
       
       console.log('✅ Subscription activated successfully:', {

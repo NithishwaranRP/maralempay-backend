@@ -64,13 +64,23 @@ const processSuccessfulPayment = async (paymentData) => {
       paymentType,
       phoneNumber,
       customerEmail,
-            amount
-          });
-          
-    // Find user by email
+      amount
+    });
+    
+    // Find user by email first
     const user = await User.findOne({ email: customerEmail });
     if (!user) {
       console.error('❌ User not found for email:', customerEmail);
+      return;
+    }
+    
+    // Check if this is a subscription payment
+    const subscriptionAmount = parseFloat(process.env.SUBSCRIPTION_AMOUNT || 100);
+    const isSubscriptionPayment = Math.abs(parseFloat(amount) - subscriptionAmount) < 1;
+    
+    if (isSubscriptionPayment) {
+      console.log('💳 [WEBHOOK] This is a subscription payment, processing subscription activation...');
+      await processSubscriptionPayment(user, amount, tx_ref, paymentData);
       return;
     }
     
@@ -461,10 +471,69 @@ const handleBillPaymentCallback = async (req, res) => {
   }
 };
 
+/**
+ * Process subscription payment activation
+ */
+const processSubscriptionPayment = async (user, amount, tx_ref, paymentData) => {
+  try {
+    console.log(`[WEBHOOK SUBSCRIPTION] Processing subscription for user ${user._id}`);
+    
+    // --> 💡 LOG 1: Confirming update attempt <--
+    console.log(`[WEBHOOK SUBSCRIPTION] Verified success for User ID: ${user._id}. Attempting DB update.`);
+    console.log(`[WEBHOOK SUBSCRIPTION] Payment amount: ${amount}`);
+    
+    // Calculate 6 months expiry
+    const subscriptionExpiry = new Date();
+    subscriptionExpiry.setMonth(subscriptionExpiry.getMonth() + 6);
+    
+    try {
+      // Update user subscription status
+      const updatedUser = await User.findByIdAndUpdate(user._id, {
+        isSubscriber: true,
+        subscriptionStatus: 'active',
+        subscriptionDate: new Date(),
+        subscriptionExpiry: subscriptionExpiry
+      }, { new: true });
+
+      if (updatedUser) {
+        // --> ✅ LOG 2: Success Confirmation <--
+        console.log(`[WEBHOOK SUBSCRIPTION] Success: User ${user._id} is now subscribed until ${updatedUser.subscriptionExpiry}`);
+        console.log(`[WEBHOOK SUBSCRIPTION] User subscription status: isSubscriber=${updatedUser.isSubscriber}, subscriptionStatus=${updatedUser.subscriptionStatus}`);
+      } else {
+        // --> ❌ LOG 3: User Not Found/Update Failed <--
+        console.error(`[WEBHOOK SUBSCRIPTION] ERROR: User ${user._id} not found or update failed after successful payment.`);
+      }
+    } catch (dbError) {
+      // --> ❌ LOG 4: Database Error Capture <--
+      console.error(`[WEBHOOK SUBSCRIPTION] CRITICAL DB ERROR for user ${user._id}:`, dbError.message || dbError);
+      console.error(`[WEBHOOK SUBSCRIPTION] DB Error stack:`, dbError.stack);
+      throw new Error('Database update failed post-verification.');
+    }
+    
+    // Create subscription record
+    console.log(`[WEBHOOK SUBSCRIPTION] Creating subscription record for user ${user._id}`);
+    const newSubscription = await Subscription.create({
+      user: user._id,
+      status: 'active',
+      amount: parseFloat(amount),
+      currency: 'NGN',
+      activatedAt: new Date(),
+      expiresAt: subscriptionExpiry,
+      paymentReference: tx_ref,
+      flutterwaveReference: paymentData.flw_ref
+    });
+    console.log(`[WEBHOOK SUBSCRIPTION] New subscription record created: ${newSubscription._id}`);
+    
+  } catch (error) {
+    console.error('❌ Error processing subscription payment:', error);
+  }
+};
+
 module.exports = {
   handleFlutterwaveWebhook,
   handlePaymentWebhook,
   handleBillPaymentCallback,
   processSuccessfulPayment,
   processBillPayment,
+  processSubscriptionPayment,
 };
