@@ -1,9 +1,23 @@
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const { FlutterwaveService } = require('../utils/flutterwave');
-const emailService = require('../services/sendpulseEmailService');
+// Import email service conditionally to avoid initialization errors during testing
+let emailService;
+try {
+  emailService = require('../services/sendpulseEmailService');
+} catch (error) {
+  console.warn('⚠️ SendPulse email service not available:', error.message);
+  emailService = null;
+}
 
-const flutterwaveService = new FlutterwaveService();
+// Initialize Flutterwave service conditionally to avoid initialization errors during testing
+let flutterwaveService;
+try {
+  flutterwaveService = new FlutterwaveService();
+} catch (error) {
+  console.warn('⚠️ Flutterwave service not available:', error.message);
+  flutterwaveService = null;
+}
 
 /**
  * Handle Flutterwave payment webhook
@@ -50,9 +64,9 @@ const processSuccessfulPayment = async (paymentData) => {
       paymentType,
       phoneNumber,
       customerEmail,
-      amount
-    });
-    
+            amount
+          });
+          
     // Find user by email
     const user = await User.findOne({ email: customerEmail });
     if (!user) {
@@ -128,10 +142,10 @@ const processBillPayment = async ({
     
     // Prepare bill payment request
     const billPaymentData = {
-      country: 'NG',
+                country: 'NG',
       customer: phoneNumber,
       amount: parseFloat(originalAmount), // Use full amount
-      recurrence: 'ONCE',
+                recurrence: 'ONCE',
       type: paymentType === 'airtime' ? 'AIRTIME' : 'DATA',
       reference: `MARALEM_${Date.now()}_${transaction._id}`,
       biller_name: billerCode,
@@ -140,6 +154,9 @@ const processBillPayment = async ({
     console.log('📤 Sending bill payment request:', billPaymentData);
     
     // Call Flutterwave Bill Payment API
+    if (!flutterwaveService) {
+      throw new Error('Flutterwave service not available');
+    }
     const billResponse = await flutterwaveService.createBillPayment(billPaymentData);
     
     if (billResponse.success) {
@@ -166,7 +183,7 @@ const processBillPayment = async ({
         transactionRef: transaction.reference,
       });
       
-    } else {
+              } else {
       console.error('❌ Bill payment failed:', billResponse.message);
       
       // Update transaction status
@@ -282,14 +299,17 @@ const sendPurchaseSuccessEmail = async ({
       © 2025 MaralemPay. All rights reserved.
     `;
     
-    await emailService.sendCustomEmail({
-      to: customerEmail,
-      subject: subject,
-      htmlContent: htmlContent,
-      textContent: textContent,
-    });
-    
-    console.log('✅ Purchase success email sent successfully');
+    if (emailService) {
+      await emailService.sendCustomEmail({
+        to: customerEmail,
+        subject: subject,
+        htmlContent: htmlContent,
+        textContent: textContent,
+      });
+      console.log('✅ Purchase success email sent successfully');
+    } else {
+      console.warn('⚠️ Email service not available, skipping success email');
+    }
     
   } catch (error) {
     console.error('❌ Error sending purchase success email:', error);
@@ -379,22 +399,72 @@ const sendPurchaseFailureEmail = async ({
       © 2025 MaralemPay. All rights reserved.
     `;
     
-    await emailService.sendCustomEmail({
-      to: customerEmail,
-      subject: subject,
-      htmlContent: htmlContent,
-      textContent: textContent,
-    });
-    
-    console.log('✅ Purchase failure email sent successfully');
+    if (emailService) {
+      await emailService.sendCustomEmail({
+        to: customerEmail,
+        subject: subject,
+        htmlContent: htmlContent,
+        textContent: textContent,
+      });
+      console.log('✅ Purchase failure email sent successfully');
+    } else {
+      console.warn('⚠️ Email service not available, skipping failure email');
+    }
     
   } catch (error) {
     console.error('❌ Error sending purchase failure email:', error);
   }
 };
 
+/**
+ * Handle general payment webhook (for compatibility)
+ * POST /api/webhooks/payment
+ */
+const handlePaymentWebhook = async (req, res) => {
+  try {
+    console.log('🔔 General payment webhook received:', req.body);
+    
+    // For now, redirect to Flutterwave webhook handler
+    return await handleFlutterwaveWebhook(req, res);
+  } catch (error) {
+    console.error('❌ Payment webhook processing error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * Handle bill payment callback (for compatibility)
+ * POST /api/webhooks/bill-payment
+ */
+const handleBillPaymentCallback = async (req, res) => {
+  try {
+    console.log('🔔 Bill payment callback received:', req.body);
+    
+    // This endpoint can be used for bill payment status updates
+    const { status, reference, amount } = req.body;
+      
+      if (status === 'successful') {
+      // Update transaction status to fulfilled
+      const transaction = await Transaction.findOne({ reference });
+      if (transaction) {
+        transaction.status = 'fulfilled';
+        transaction.deliveredAt = new Date();
+        await transaction.save();
+        console.log('✅ Transaction status updated to fulfilled:', reference);
+      }
+    }
+    
+    res.status(200).json({ success: true, message: 'Callback processed' });
+  } catch (error) {
+    console.error('❌ Bill payment callback error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 module.exports = {
   handleFlutterwaveWebhook,
+  handlePaymentWebhook,
+  handleBillPaymentCallback,
   processSuccessfulPayment,
   processBillPayment,
 };
