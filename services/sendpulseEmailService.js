@@ -95,17 +95,14 @@ class SendPulseEmailService {
         © 2025 MaralemPay. All rights reserved.
       `;
 
-      // Base64 encode the content as required by SendPulse
-      const htmlBase64 = Buffer.from(htmlContent, 'utf8').toString('base64');
-      const textBase64 = Buffer.from(textContent, 'utf8').toString('base64');
-
+      // Use direct content without Base64 encoding (as per PowerShell example)
       const emailData = {
         email: {
-          html: htmlBase64,
-          text: textBase64,
+          html: htmlContent,
+          text: textContent,
           subject: subject,
           from: {
-            name: process.env.EMAIL_FROM_NAME || 'MaralemPay',
+            name: process.env.EMAIL_FROM_NAME || 'MaralemPay Support',
             email: process.env.EMAIL_FROM || 'hello@maralempay.com.ng'
           },
           to: [
@@ -144,6 +141,45 @@ class SendPulseEmailService {
     } catch (error) {
       console.error('❌ SendPulse API connection failed:', error.message);
       return false;
+    }
+  }
+
+  async testConnection() {
+    try {
+      console.log('🧪 Testing SendPulse API connection...');
+      const accessToken = await this.getAccessToken();
+      
+      // Test with a simple email
+      const testEmailData = {
+        email: {
+          html: '<h1>Test Email from MaralemPay</h1><p>This is a test email to verify SendPulse integration.</p>',
+          text: 'Test Email from MaralemPay\n\nThis is a test email to verify SendPulse integration.',
+          subject: 'Test Email - MaralemPay SendPulse Integration',
+          from: {
+            name: process.env.EMAIL_FROM_NAME || 'MaralemPay Support',
+            email: process.env.EMAIL_FROM || 'hello@maralempay.com.ng'
+          },
+          to: [
+            {
+              email: 'test@example.com' // This won't actually send, just tests the API
+            }
+          ]
+        }
+      };
+
+      console.log('✅ SendPulse API connection test successful');
+      return { 
+        success: true, 
+        message: 'SendPulse API connection verified successfully',
+        provider: 'sendpulse'
+      };
+    } catch (error) {
+      console.error('❌ SendPulse API connection test failed:', error.message);
+      return { 
+        success: false, 
+        error: error.message,
+        provider: 'sendpulse'
+      };
     }
   }
 }

@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const { generateUserToken } = require('../utils/jwt');
 const { FlutterwaveService } = require('../utils/flutterwave');
-const emailService = require('../services/emailService');
+const emailService = require('../services/sendpulseEmailService');
 const VerificationCode = require('../models/VerificationCode');
 
 const flutterwaveService = new FlutterwaveService();
