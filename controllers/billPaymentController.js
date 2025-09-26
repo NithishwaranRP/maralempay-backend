@@ -437,5 +437,7 @@ const getTransactionHistory = async (req, res) => {
 module.exports = {
   initiateBillPurchase,
   verifyBillPurchase,
-  getTransactionHistory
+  getTransactionHistory,
+  processBillFulfillment,
+  verifyFlutterwaveTransaction
 };

@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const { createFlutterwavePayment } = require('../utils/flutterwave');
 const emailService = require('../utils/emailService');
+const axios = require('axios');
 
 /**
  * Initiate subscription payment
@@ -263,7 +264,6 @@ const getSubscriptionStatus = async (req, res) => {
  */
 const verifyFlutterwaveTransaction = async (txRef) => {
   try {
-    const axios = require('axios');
     const response = await axios.get(
       `https://api.flutterwave.com/v3/transactions/${txRef}/verify`,
       {
@@ -298,5 +298,6 @@ const verifyFlutterwaveTransaction = async (txRef) => {
 module.exports = {
   initiateSubscription,
   verifySubscription,
-  getSubscriptionStatus
+  getSubscriptionStatus,
+  verifyFlutterwaveTransaction
 };
