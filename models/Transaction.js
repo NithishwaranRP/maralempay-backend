@@ -1,191 +1,205 @@
 const mongoose = require('mongoose');
 
-// MongoDB Transaction Schema for idempotency and status tracking
 const transactionSchema = new mongoose.Schema({
-  tx_ref: { 
-    type: String, 
-    required: true, 
-    unique: true,
-    index: true 
+  // User information
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
   },
-  userId: { 
-    type: String, 
-    required: true,
-    index: true 
-  },
-  phone: { 
-    type: String, 
-    required: true 
-  },
-  biller_code: { 
-    type: String, 
-    required: true 
-  },
-  item_code: { 
-    type: String 
-  },
-  fullAmount: { 
-    type: Number, 
-    required: true 
-  },
-  userAmount: { 
-    type: Number, 
-    required: true 
-  },
-  isSubscriber: { 
-    type: Boolean, 
-    default: false 
-  },
-  status: { 
-    type: String, 
-    enum: ['initialized', 'paid', 'delivered', 'failed', 'refunded', 'failed_refunded'],
-    default: 'initialized',
-    index: true
-  },
-  flutterwave_transaction_id: { 
+  
+  // Transaction reference
+  txRef: {
     type: String,
-    index: true 
+    required: true,
+    unique: true
   },
-  biller_reference: { 
-    type: String 
+  
+  // Bill payment details
+  billerCode: {
+    type: String,
+    required: true
   },
-  biller_status: { 
-    type: String 
+  
+  itemCode: {
+    type: String,
+    required: true
   },
-  deliveredAt: { 
-    type: Date 
+  
+  customerId: {
+    type: String,
+    required: true
   },
-  refundedAt: { 
-    type: Date 
+  
+  productName: {
+    type: String,
+    required: true
   },
-  refund_amount: { 
-    type: Number 
+  
+  productType: {
+    type: String,
+    required: true,
+    enum: ['airtime', 'data']
   },
-  idempotency_key: { 
-    type: String, 
-    required: true, 
-    unique: true,
-    index: true 
+  
+  // Pricing information
+  fullPrice: {
+    type: Number,
+    required: true
   },
-  createdAt: { 
-    type: Date, 
-    default: Date.now,
-    index: true 
+  
+  customerAmount: {
+    type: Number,
+    required: true
   },
-  updatedAt: { 
-    type: Date, 
-    default: Date.now 
+  
+  discountAmount: {
+    type: Number,
+    required: true
   },
-  error_logs: [{ 
-    timestamp: { 
-      type: Date, 
-      default: Date.now 
-    },
-    error: String,
-    context: String
-  }]
+  
+  discountPercentage: {
+    type: Number,
+    required: true,
+    default: 10
+  },
+  
+  // Transaction status
+  status: {
+    type: String,
+    required: true,
+    enum: ['pending', 'completed', 'failed', 'fulfillment_failed'],
+    default: 'pending'
+  },
+  
+  paymentStatus: {
+    type: String,
+    required: true,
+    enum: ['pending', 'completed', 'failed'],
+    default: 'pending'
+  },
+  
+  fulfillmentStatus: {
+    type: String,
+    required: true,
+    enum: ['pending', 'completed', 'failed'],
+    default: 'pending'
+  },
+  
+  // Flutterwave transaction IDs
+  flutterwaveTransactionId: {
+    type: String
+  },
+  
+  flutterwaveBillPaymentId: {
+    type: String
+  },
+  
+  // Timestamps
+  paymentCompletedAt: {
+    type: Date
+  },
+  
+  fulfillmentCompletedAt: {
+    type: Date
+  },
+  
+  // Error handling
+  errorMessage: {
+    type: String
+  }
 }, {
-  timestamps: true // Automatically manage createdAt and updatedAt
+  timestamps: true
 });
 
 // Indexes for better query performance
 transactionSchema.index({ userId: 1, createdAt: -1 });
-transactionSchema.index({ status: 1, createdAt: -1 });
-transactionSchema.index({ phone: 1, createdAt: -1 });
-transactionSchema.index({ biller_code: 1, createdAt: -1 });
+transactionSchema.index({ txRef: 1 });
+transactionSchema.index({ status: 1 });
+transactionSchema.index({ paymentStatus: 1 });
+transactionSchema.index({ fulfillmentStatus: 1 });
 
-// Virtual for discount amount
-transactionSchema.virtual('discountAmount').get(function() {
-  return this.fullAmount - this.userAmount;
+// Virtual for transaction summary
+transactionSchema.virtual('summary').get(function() {
+  return {
+    id: this._id,
+    txRef: this.txRef,
+    productName: this.productName,
+    customerId: this.customerId,
+    fullPrice: this.fullPrice,
+    customerAmount: this.customerAmount,
+    discountAmount: this.discountAmount,
+    status: this.status,
+    createdAt: this.createdAt
+  };
 });
 
-// Method to add error log
-transactionSchema.methods.addErrorLog = function(error, context) {
-  this.error_logs.push({
-    timestamp: new Date(),
-    error: error.toString(),
-    context: context || 'Unknown'
-  });
-  this.updatedAt = new Date();
-  return this.save();
+// Method to check if transaction is completed
+transactionSchema.methods.isCompleted = function() {
+  return this.status === 'completed' && 
+         this.paymentStatus === 'completed' && 
+         this.fulfillmentStatus === 'completed';
 };
 
-// Method to update status
-transactionSchema.methods.updateStatus = function(newStatus, additionalData = {}) {
-  this.status = newStatus;
-  this.updatedAt = new Date();
-  
-  // Set specific timestamps based on status
-  if (newStatus === 'delivered') {
-    this.deliveredAt = new Date();
-  } else if (newStatus === 'refunded' || newStatus === 'failed_refunded') {
-    this.refundedAt = new Date();
-  }
-  
-  // Update additional fields
-  Object.keys(additionalData).forEach(key => {
-    if (this.schema.paths[key]) {
-      this[key] = additionalData[key];
+// Method to check if transaction failed
+transactionSchema.methods.isFailed = function() {
+  return this.status === 'failed' || 
+         this.status === 'fulfillment_failed' ||
+         this.paymentStatus === 'failed' ||
+         this.fulfillmentStatus === 'failed';
+};
+
+// Method to get transaction status summary
+transactionSchema.methods.getStatusSummary = function() {
+  return {
+    overall: this.status,
+    payment: this.paymentStatus,
+    fulfillment: this.fulfillmentStatus,
+    isCompleted: this.isCompleted(),
+    isFailed: this.isFailed(),
+    errorMessage: this.errorMessage
+  };
+};
+
+// Static method to get user's transaction statistics
+transactionSchema.statics.getUserStats = async function(userId) {
+  const stats = await this.aggregate([
+    { $match: { userId: mongoose.Types.ObjectId(userId) } },
+    {
+      $group: {
+        _id: null,
+        totalTransactions: { $sum: 1 },
+        completedTransactions: {
+          $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+        },
+        failedTransactions: {
+          $sum: { $cond: [{ $in: ['$status', ['failed', 'fulfillment_failed']] }, 1, 0] }
+        },
+        totalAmountPaid: {
+          $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$customerAmount', 0] }
+        },
+        totalDiscountReceived: {
+          $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$discountAmount', 0] }
+        },
+        totalValueReceived: {
+          $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$fullPrice', 0] }
+        }
+      }
     }
-  });
-  
-  return this.save();
+  ]);
+
+  return stats[0] || {
+    totalTransactions: 0,
+    completedTransactions: 0,
+    failedTransactions: 0,
+    totalAmountPaid: 0,
+    totalDiscountReceived: 0,
+    totalValueReceived: 0
+  };
 };
 
-// Static method to find by tx_ref
-transactionSchema.statics.findByTxRef = function(txRef) {
-  return this.findOne({ tx_ref: txRef });
-};
+// Ensure virtual fields are serialized
+transactionSchema.set('toJSON', { virtuals: true });
+transactionSchema.set('toObject', { virtuals: true });
 
-// Static method to find by transaction ID
-transactionSchema.statics.findByTransactionId = function(transactionId) {
-  return this.findOne({ flutterwave_transaction_id: transactionId });
-};
-
-// Static method to get user transactions
-transactionSchema.statics.getUserTransactions = function(userId, limit = 10, skip = 0) {
-  return this.find({ userId })
-    .sort({ createdAt: -1 })
-    .limit(limit)
-    .skip(skip);
-};
-
-// Static method to get transactions by status
-transactionSchema.statics.getTransactionsByStatus = function(status, limit = 50, skip = 0) {
-  return this.find({ status })
-    .sort({ createdAt: -1 })
-    .limit(limit)
-    .skip(skip);
-};
-
-// Static method to get failed transactions for retry
-transactionSchema.statics.getFailedTransactions = function(hoursAgo = 24) {
-  const cutoffDate = new Date(Date.now() - (hoursAgo * 60 * 60 * 1000));
-  return this.find({
-    status: { $in: ['failed', 'failed_refunded'] },
-    createdAt: { $gte: cutoffDate }
-  }).sort({ createdAt: -1 });
-};
-
-// Pre-save middleware to update updatedAt
-transactionSchema.pre('save', function(next) {
-  this.updatedAt = new Date();
-  next();
-});
-
-// Pre-save middleware to validate amounts
-transactionSchema.pre('save', function(next) {
-  if (this.fullAmount <= 0) {
-    return next(new Error('fullAmount must be greater than 0'));
-  }
-  if (this.userAmount <= 0) {
-    return next(new Error('userAmount must be greater than 0'));
-  }
-  if (this.userAmount > this.fullAmount) {
-    return next(new Error('userAmount cannot be greater than fullAmount'));
-  }
-  next();
-});
-
-// Export the model
-module.exports = mongoose.models.Transaction || mongoose.model('Transaction', transactionSchema);
+module.exports = mongoose.model('Transaction', transactionSchema);
