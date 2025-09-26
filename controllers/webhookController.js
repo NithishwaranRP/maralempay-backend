@@ -510,19 +510,38 @@ const processSubscriptionPayment = async (user, amount, tx_ref, paymentData) => 
       throw new Error('Database update failed post-verification.');
     }
     
-    // Create subscription record
-    console.log(`[WEBHOOK SUBSCRIPTION] Creating subscription record for user ${user._id}`);
-    const newSubscription = await Subscription.create({
-      user: user._id,
-      status: 'active',
-      amount: parseFloat(amount),
-      currency: 'NGN',
-      activatedAt: new Date(),
-      expiresAt: subscriptionExpiry,
-      paymentReference: tx_ref,
-      flutterwaveReference: paymentData.flw_ref
-    });
-    console.log(`[WEBHOOK SUBSCRIPTION] New subscription record created: ${newSubscription._id}`);
+    // Create or update subscription record
+    console.log(`[WEBHOOK SUBSCRIPTION] Creating/updating subscription record for user ${user._id}`);
+    const existingSubscription = await Subscription.findOne({ user: user._id });
+    
+    if (existingSubscription) {
+      // Update existing subscription
+      console.log(`[WEBHOOK SUBSCRIPTION] Updating existing subscription ${existingSubscription._id}`);
+      await Subscription.findByIdAndUpdate(existingSubscription._id, {
+        status: 'active',
+        paymentStatus: 'paid', // CRITICAL: Update payment status to 'paid'
+        amount: parseFloat(amount),
+        startDate: new Date(),
+        endDate: subscriptionExpiry,
+        paymentReference: tx_ref,
+        flutterwaveRef: paymentData.flw_ref
+      });
+      console.log(`[WEBHOOK SUBSCRIPTION] Subscription record updated successfully with paymentStatus: 'paid'`);
+    } else {
+      // Create new subscription
+      console.log(`[WEBHOOK SUBSCRIPTION] Creating new subscription record`);
+      const newSubscription = await Subscription.create({
+        user: user._id,
+        status: 'active',
+        paymentStatus: 'paid', // CRITICAL: Set payment status to 'paid'
+        amount: parseFloat(amount),
+        startDate: new Date(),
+        endDate: subscriptionExpiry,
+        paymentReference: tx_ref,
+        flutterwaveRef: paymentData.flw_ref
+      });
+      console.log(`[WEBHOOK SUBSCRIPTION] New subscription record created: ${newSubscription._id} with paymentStatus: 'paid'`);
+    }
     
   } catch (error) {
     console.error('❌ Error processing subscription payment:', error);

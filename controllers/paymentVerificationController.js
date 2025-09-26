@@ -146,27 +146,28 @@ const verifyPayment = async (req, res) => {
         console.log(`[SUBSCRIPTION FINALIZE] Updating existing subscription ${existingSubscription._id}`);
         await Subscription.findByIdAndUpdate(existingSubscription._id, {
           status: 'active',
+          paymentStatus: 'paid', // CRITICAL: Update payment status to 'paid'
           amount: paymentAmount,
-          activatedAt: new Date(),
-          expiresAt: subscriptionExpiry,
+          startDate: new Date(),
+          endDate: subscriptionExpiry,
           paymentReference: verificationRef,
-          flutterwaveReference: paymentData.flw_ref
+          flutterwaveRef: paymentData.flw_ref
         });
-        console.log(`[SUBSCRIPTION FINALIZE] Subscription record updated successfully`);
+        console.log(`[SUBSCRIPTION FINALIZE] Subscription record updated successfully with paymentStatus: 'paid'`);
       } else {
         // Create new subscription
         console.log(`[SUBSCRIPTION FINALIZE] Creating new subscription record`);
         const newSubscription = await Subscription.create({
           user: user._id,
           status: 'active',
+          paymentStatus: 'paid', // CRITICAL: Set payment status to 'paid'
           amount: paymentAmount,
-          currency: paymentData.currency || 'NGN',
-          activatedAt: new Date(),
-          expiresAt: subscriptionExpiry,
+          startDate: new Date(),
+          endDate: subscriptionExpiry,
           paymentReference: verificationRef,
-          flutterwaveReference: paymentData.flw_ref
+          flutterwaveRef: paymentData.flw_ref
         });
-        console.log(`[SUBSCRIPTION FINALIZE] New subscription record created: ${newSubscription._id}`);
+        console.log(`[SUBSCRIPTION FINALIZE] New subscription record created: ${newSubscription._id} with paymentStatus: 'paid'`);
       }
       
       console.log('✅ Subscription activated successfully:', {
