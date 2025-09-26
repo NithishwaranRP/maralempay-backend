@@ -1102,6 +1102,25 @@ class FlutterwaveService {
   }
 }
 
+// Create instance for easy access
+const flutterwaveInstance = new FlutterwaveService();
+
+// Helper function for creating payments
+const createFlutterwavePayment = async (paymentData) => {
+  try {
+    const response = await axios.post(
+      `${flutterwaveInstance.baseURL}/payments`,
+      paymentData,
+      { headers: flutterwaveInstance.headers }
+    );
+    return response.data;
+  } catch (error) {
+    console.error('❌ Error creating Flutterwave payment:', error);
+    throw error;
+  }
+};
+
 module.exports = {
-  FlutterwaveService
+  FlutterwaveService,
+  createFlutterwavePayment
 };
