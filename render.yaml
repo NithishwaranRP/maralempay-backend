@@ -3,7 +3,7 @@ services:
     name: maralempay-backend
     env: node
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: npm run render
     envVars:
       - key: NODE_ENV
         value: production

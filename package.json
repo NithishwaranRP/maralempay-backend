@@ -8,6 +8,7 @@
     "render-start": "node server.js",
     "build": "echo 'Build completed'",
     "dev": "nodemon server.js",
+    "render": "node server.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
