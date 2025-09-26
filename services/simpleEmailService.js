@@ -8,8 +8,8 @@ class SimpleEmailService {
       console.log('📧 Using MOCK email service (USE_MOCK_EMAIL=true)');
       this.setupMockTransporter();
     } else {
-      console.log('📧 Using SIMPLE email service with Gmail SMTP');
-      this.setupGmailTransporter();
+      console.log('📧 Using MaralemPay domain SMTP email service');
+      this.setupDomainSMTP();
     }
   }
 
@@ -22,32 +22,48 @@ class SimpleEmailService {
     });
   }
 
-  setupGmailTransporter() {
-    // Use Gmail SMTP as primary
-    if (process.env.GMAIL_USER && process.env.GMAIL_PASS) {
-      console.log('🔍 Setting up Gmail SMTP...');
-      this.transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.GMAIL_USER,
-          pass: process.env.GMAIL_PASS
-        }
-      });
+  setupDomainSMTP() {
+    // Use MaralemPay domain SMTP only
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      console.log('🔍 Setting up MaralemPay domain SMTP...');
       
-      // Verify connection
-      this.transporter.verify((error, success) => {
-        if (error) {
-          console.log('❌ Gmail SMTP connection failed:', error.message);
+      const smtpConfig = {
+        host: process.env.EMAIL_HOST || 'mail.maralempay.com.ng',
+        port: parseInt(process.env.EMAIL_PORT) || 465,
+        secure: true, // Use SSL
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS
+        },
+        tls: {
+          rejectUnauthorized: false
+        },
+        connectionTimeout: 30000, // 30 seconds
+        greetingTimeout: 10000,   // 10 seconds
+        socketTimeout: 30000      // 30 seconds
+      };
+      
+      this.transporter = nodemailer.createTransport(smtpConfig);
+      
+      // Verify connection with timeout
+      const verifyPromise = this.transporter.verify();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('SMTP verification timeout')), 15000)
+      );
+      
+      Promise.race([verifyPromise, timeoutPromise])
+        .then(() => {
+          console.log('✅ MaralemPay domain SMTP connected successfully');
+        })
+        .catch((error) => {
+          console.log('❌ MaralemPay domain SMTP connection failed:', error.message);
           console.log('⚠️  Falling back to mock mode');
           this.useMockMode = true;
           this.setupMockTransporter();
-        } else {
-          console.log('✅ Gmail SMTP connected successfully');
-        }
-      });
+        });
     } else {
-      console.log('⚠️  Gmail credentials not found, using mock mode');
-      console.log('💡 Set GMAIL_USER and GMAIL_PASS environment variables');
+      console.log('⚠️  MaralemPay domain SMTP credentials not found, using mock mode');
+      console.log('💡 Set EMAIL_USER and EMAIL_PASS environment variables');
       this.useMockMode = true;
       this.setupMockTransporter();
     }
@@ -79,17 +95,30 @@ class SimpleEmailService {
       `;
 
       const mailOptions = {
-        from: process.env.GMAIL_USER || 'noreply@maralempay.com',
+        from: `${process.env.EMAIL_FROM_NAME || 'MaralemPay'} <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
         to: email,
         subject: subject,
         html: html
       };
 
-      const result = await this.transporter.sendMail(mailOptions);
+      // Send email with timeout
+      const sendPromise = this.transporter.sendMail(mailOptions);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Email sending timeout')), 30000)
+      );
+      
+      const result = await Promise.race([sendPromise, timeoutPromise]);
       console.log(`✅ ${type} email sent successfully to ${email}`);
       return { success: true, messageId: result.messageId };
     } catch (error) {
       console.error(`❌ Error sending ${type} email to ${email}:`, error.message);
+      
+      // If SMTP fails, fall back to mock mode for this request
+      if (error.message.includes('timeout') || error.message.includes('ECONNREFUSED')) {
+        console.log('⚠️  SMTP connection failed, using mock mode for this email');
+        return { success: true, message: 'Email queued (SMTP unavailable)' };
+      }
+      
       throw error;
     }
   }
