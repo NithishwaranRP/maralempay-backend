@@ -1,38 +1,88 @@
-const nodemailer = require('nodemailer');
+const axios = require('axios');
 
-// Email configuration
-const EMAIL_CONFIG = {
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: process.env.SMTP_PORT || 587,
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
+// SendPulse API configuration
+const SENDPULSE_CONFIG = {
+  apiUrl: 'https://api.sendpulse.com',
+  clientId: process.env.SENDPULSE_CLIENT_ID,
+  clientSecret: process.env.SENDPULSE_CLIENT_SECRET,
+  fromEmail: process.env.EMAIL_FROM || 'hello@maralempay.com.ng',
+  fromName: process.env.EMAIL_FROM_NAME || 'MaralemPay',
 };
 
-// Create transporter
-const transporter = nodemailer.createTransporter(EMAIL_CONFIG);
+let accessToken = null;
+let tokenExpiry = null;
 
 /**
- * Send email with template
+ * Get SendPulse access token
+ */
+const getAccessToken = async () => {
+  try {
+    // Check if we have a valid token
+    if (accessToken && tokenExpiry && new Date() < tokenExpiry) {
+      return accessToken;
+    }
+
+    // Get new token
+    const response = await axios.post(`${SENDPULSE_CONFIG.apiUrl}/oauth/access_token`, {
+      grant_type: 'client_credentials',
+      client_id: SENDPULSE_CONFIG.clientId,
+      client_secret: SENDPULSE_CONFIG.clientSecret,
+    });
+
+    accessToken = response.data.access_token;
+    tokenExpiry = new Date(Date.now() + (response.data.expires_in * 1000) - 60000); // 1 minute buffer
+
+    console.log('✅ SendPulse access token obtained');
+    return accessToken;
+  } catch (error) {
+    console.error('❌ Error getting SendPulse access token:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+/**
+ * Send email with template using SendPulse API
  */
 const sendEmail = async ({ to, subject, template, data }) => {
   try {
+    const token = await getAccessToken();
     const htmlContent = generateEmailTemplate(template, data);
     
-    const mailOptions = {
-      from: `"MaralemPay" <${process.env.SMTP_USER}>`,
-      to: to,
-      subject: subject,
-      html: htmlContent,
+    // Base64 encode the content as required by SendPulse
+    const htmlBase64 = Buffer.from(htmlContent, 'utf8').toString('base64');
+    
+    const emailData = {
+      email: {
+        subject: subject,
+        from: {
+          name: SENDPULSE_CONFIG.fromName,
+          email: SENDPULSE_CONFIG.fromEmail,
+        },
+        to: [
+          {
+            name: data.userName || 'User',
+            email: to,
+          }
+        ],
+        html: htmlBase64,
+      }
     };
 
-    const result = await transporter.sendMail(mailOptions);
-    console.log('✅ Email sent successfully:', result.messageId);
-    return result;
+    const response = await axios.post(
+      `${SENDPULSE_CONFIG.apiUrl}/smtp/emails`,
+      emailData,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    console.log('✅ Email sent successfully via SendPulse:', response.data.id);
+    return response.data;
   } catch (error) {
-    console.error('❌ Error sending email:', error);
+    console.error('❌ Error sending email via SendPulse:', error.response?.data || error.message);
     throw error;
   }
 };
@@ -104,7 +154,7 @@ const generateSubscriptionSuccessTemplate = (data) => {
           </div>
 
           <p>Thank you for choosing MaralemPay. If you have any questions, feel free to contact our support team.</p>
-        </div>
+          </div>
         <div class="footer">
           <p>© 2024 MaralemPay. All rights reserved.</p>
           <p>This email was sent to ${data.userName}. If you have any questions, contact us at support@maralempay.com.ng</p>
@@ -236,7 +286,7 @@ const generateBillPaymentFailedTemplate = (data) => {
           </div>
 
           <p>We apologize for any inconvenience. Our team is working to resolve this issue as quickly as possible.</p>
-        </div>
+          </div>
         <div class="footer">
           <p>© 2024 MaralemPay. All rights reserved.</p>
           <p>This email was sent to ${data.userName}. If you have any questions, contact us at support@maralempay.com.ng</p>
