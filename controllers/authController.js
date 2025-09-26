@@ -251,10 +251,20 @@ const loginUser = async (req, res) => {
 // Get current user profile
 const getProfile = async (req, res) => {
   try {
+    // Fetch fresh user data from MongoDB instead of using req.user
+    const freshUser = await User.findById(req.user._id);
+    
+    if (!freshUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
     res.json({
       success: true,
       data: {
-        user: req.user.getPublicProfile()
+        user: freshUser.getPublicProfile()
       }
     });
   } catch (error) {

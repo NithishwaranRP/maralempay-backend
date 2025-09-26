@@ -93,7 +93,7 @@ const verifyPayment = async (req, res) => {
     console.log('👤 Authenticated user for payment verification:', {
       user_id: user._id,
       email: user.email,
-      current_subscription_status: user.isSubscribed,
+      current_subscription_status: user.isSubscriber,
       payment_email: customerEmail
     });
     
@@ -111,9 +111,10 @@ const verifyPayment = async (req, res) => {
       
       // Update user subscription status
       await User.findByIdAndUpdate(user._id, {
-        isSubscribed: true,
-        subscriptionExpiry: subscriptionExpiry,
-        subscriptionActivatedAt: new Date()
+        isSubscriber: true,
+        subscriptionStatus: 'active',
+        subscriptionDate: new Date(),
+        subscriptionExpiry: subscriptionExpiry
       });
       
       // Create or update subscription record
@@ -157,7 +158,9 @@ const verifyPayment = async (req, res) => {
         data: {
           user_id: user._id,
           email: user.email,
-          subscription_status: 'active',
+          isSubscriber: true,
+          subscriptionStatus: 'active',
+          subscriptionDate: new Date(),
           subscription_expiry: subscriptionExpiry,
           payment_amount: paymentAmount,
           payment_status: paymentData.status,
@@ -231,7 +234,8 @@ const getPaymentStatus = async (req, res) => {
       const user = await User.findOne({ email: customerEmail });
       if (user) {
         subscriptionInfo = {
-          is_subscribed: user.isSubscribed,
+          isSubscriber: user.isSubscriber,
+          subscriptionStatus: user.subscriptionStatus,
           subscription_expiry: user.subscriptionExpiry,
           user_id: user._id
         };
