@@ -4,86 +4,120 @@ const subscriptionSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    required: true
   },
-  txRef: {
+  planType: {
     type: String,
+    enum: ['6_months'],
     required: true,
-    unique: true,
+    default: '6_months'
   },
   amount: {
     type: Number,
     required: true,
+    default: 100 // 100 NGN for 6 months
   },
-  currency: {
-    type: String,
+  duration: {
+    type: Number,
     required: true,
-    default: 'NGN',
+    default: 6 // 6 months
+  },
+  durationUnit: {
+    type: String,
+    enum: ['months'],
+    required: true,
+    default: 'months'
+  },
+  startDate: {
+    type: Date,
+    required: true,
+    default: Date.now
+  },
+  endDate: {
+    type: Date,
+    required: true
   },
   status: {
     type: String,
-    enum: ['pending', 'completed', 'failed', 'cancelled'],
-    default: 'pending',
+    enum: ['active', 'expired', 'cancelled'],
+    default: 'active'
   },
-  flutterwaveId: {
+  paymentStatus: {
     type: String,
-    required: true,
+    enum: ['pending', 'paid', 'failed'],
+    default: 'pending'
   },
-  checkoutUrl: {
+  paymentReference: {
     type: String,
-    required: true,
+    required: true
   },
-  paymentData: {
-    type: mongoose.Schema.Types.Mixed,
-    default: null,
+  flutterwaveRef: {
+    type: String,
+    default: null
   },
-  verifiedAt: {
-    type: Date,
-    default: null,
+  discountPercentage: {
+    type: Number,
+    default: 10 // 10% discount on airtime and data
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
+  benefits: {
+    airtimeDiscount: {
+      type: Number,
+      default: 10
+    },
+    dataDiscount: {
+      type: Number,
+      default: 10
+    },
+    billPaymentDiscount: {
+      type: Number,
+      default: 10
+    }
   },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  },
+  metadata: {
+    paymentMethod: String,
+    transactionId: String,
+    notes: String
+  }
+}, {
+  timestamps: true
 });
 
-// Update the updatedAt field before saving
+// Index for better query performance
+subscriptionSchema.index({ user: 1 });
+subscriptionSchema.index({ status: 1 });
+subscriptionSchema.index({ endDate: 1 });
+subscriptionSchema.index({ paymentReference: 1 });
+
+// Pre-save middleware to calculate end date
 subscriptionSchema.pre('save', function(next) {
-  this.updatedAt = new Date();
+  if (this.isNew && !this.endDate) {
+    const startDate = new Date(this.startDate);
+    this.endDate = new Date(startDate.getTime() + (this.duration * 30 * 24 * 60 * 60 * 1000)); // 30 days per month
+  }
   next();
 });
 
-// Index for efficient queries
-subscriptionSchema.index({ user: 1, status: 1 });
-subscriptionSchema.index({ txRef: 1 });
-subscriptionSchema.index({ createdAt: -1 });
-
-// Virtual for subscription duration
-subscriptionSchema.virtual('duration').get(function() {
-  return '6 months';
-});
-
-// Method to check if subscription is active
+// Instance method to check if subscription is active
 subscriptionSchema.methods.isActive = function() {
-  return this.status === 'completed';
+  const now = new Date();
+  return this.status === 'active' && this.endDate > now;
 };
 
-// Method to get subscription info
-subscriptionSchema.methods.getInfo = function() {
-  return {
-    id: this._id,
-    txRef: this.txRef,
-    amount: this.amount,
-    currency: this.currency,
-    status: this.status,
-    duration: this.duration,
-    createdAt: this.createdAt,
-    verifiedAt: this.verifiedAt,
-  };
+// Instance method to get days remaining
+subscriptionSchema.methods.getDaysRemaining = function() {
+  const now = new Date();
+  const diffTime = this.endDate - now;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return Math.max(0, diffDays);
 };
 
-module.exports = mongoose.model('Subscription', subscriptionSchema);
+// Static method to get active subscription for user
+subscriptionSchema.statics.getActiveSubscription = async function(userId) {
+  return await this.findOne({
+    user: userId,
+    status: 'active',
+    endDate: { $gt: new Date() }
+  });
+};
+
+module.exports = mongoose.models.Subscription || mongoose.model('Subscription', subscriptionSchema);

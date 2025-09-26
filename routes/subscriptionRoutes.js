@@ -2,30 +2,41 @@ const express = require('express');
 const router = express.Router();
 const { authenticateUser } = require('../middleware/auth');
 const {
-  initiateSubscription,
-  verifySubscription,
+  getSubscriptionPlans,
+  purchaseSubscription,
+  verifySubscriptionPayment,
   getSubscriptionStatus,
-  cancelSubscription
+  getSubscriptionHistory,
+  manualActivateSubscription
 } = require('../controllers/subscriptionController');
 
 // All subscription routes require authentication
 router.use(authenticateUser);
 
-// Initiate subscription payment
-// POST /api/user/subscribe/initiate
-router.post('/initiate', initiateSubscription);
+// Get available subscription plans
+// GET /api/subscription/plans
+router.get('/plans', getSubscriptionPlans);
+
+// Purchase subscription
+// POST /api/subscription/purchase
+// Body: { planType }
+router.post('/purchase', purchaseSubscription);
 
 // Verify subscription payment
-// POST /api/user/subscribe/verify
-// Body: { txRef }
-router.post('/verify', verifySubscription);
+// GET /api/subscription/verify/:payment_ref
+router.get('/verify/:payment_ref', verifySubscriptionPayment);
 
 // Get user's subscription status
-// GET /api/user/subscription/status
+// GET /api/subscription/status
 router.get('/status', getSubscriptionStatus);
 
-// Cancel subscription
-// POST /api/user/subscription/cancel
-router.post('/cancel', cancelSubscription);
+// Get subscription history
+// GET /api/subscription/history?page=1&limit=10
+router.get('/history', getSubscriptionHistory);
+
+// Manually activate subscription (for testing or webhook failures)
+// POST /api/subscription/manual-activate
+// Body: { payment_ref }
+router.post('/manual-activate', manualActivateSubscription);
 
 module.exports = router;
