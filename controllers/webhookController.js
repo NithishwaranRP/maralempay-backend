@@ -213,7 +213,8 @@ const verifyTransaction = async (req, res) => {
     }
     
     // Verify with Flutterwave API
-    const flutterwaveService = require('../utils/flutterwave');
+    const { FlutterwaveService } = require('../utils/flutterwave');
+    const flutterwaveService = new FlutterwaveService();
     const verificationResult = await flutterwaveService.verifyTransaction(tx_ref);
     
     if (verificationResult.success) {
