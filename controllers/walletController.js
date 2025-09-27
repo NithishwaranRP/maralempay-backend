@@ -104,6 +104,14 @@ const verifyWalletFunding = async (req, res) => {
 
     console.log('Verifying wallet funding for user:', user.email, 'with transaction ID:', transactionId);
 
+    // Validate transactionId
+    if (!transactionId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Transaction ID is required'
+      });
+    }
+
     // Check if this transaction has already been processed
     const existingTransaction = await WalletTransaction.findOne({
       reference: transactionId

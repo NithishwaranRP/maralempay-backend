@@ -1117,6 +1117,50 @@ class FlutterwaveService {
   }
 }
 
+  /**
+   * Verify transaction status
+   */
+  async verifyTransaction(txRef) {
+    try {
+      console.log(`🔍 Verifying transaction: ${txRef}`);
+      
+      const response = await axios.get(
+        `${this.baseURL}/transactions/${txRef}/verify`,
+        { headers: this.headers }
+      );
+      
+      if (response.data.status === 'success') {
+        const { data } = response.data;
+        console.log(`✅ Transaction verified: ${txRef} - Status: ${data.status}`);
+        
+        return {
+          success: true,
+          data: {
+            status: data.status,
+            amount: data.amount,
+            flw_ref: data.flw_ref,
+            tx_ref: data.tx_ref,
+            currency: data.currency,
+            customer: data.customer
+          }
+        };
+      } else {
+        console.log(`❌ Transaction verification failed: ${txRef}`);
+        return {
+          success: false,
+          message: response.data.message || 'Transaction verification failed'
+        };
+      }
+    } catch (error) {
+      console.error(`❌ Error verifying transaction ${txRef}:`, error.response?.data || error.message);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Transaction verification failed'
+      };
+    }
+  }
+}
+
 module.exports = {
   FlutterwaveService
 };

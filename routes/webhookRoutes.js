@@ -1,14 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const {
-  handleFlutterwaveWebhook,
-  handlePaymentWebhook,
-  handleBillPaymentCallback
-} = require('../controllers/webhookController');
+const { handleFlutterwaveWebhook, verifyTransaction } = require('../controllers/webhookController');
+const { authenticateToken } = require('../middleware/auth');
 
-// Webhook endpoints (no authentication required)
+// Flutterwave webhook endpoint (no auth required)
 router.post('/flutterwave', handleFlutterwaveWebhook);
-router.post('/payment', handlePaymentWebhook);
-router.post('/bill-payment', handleBillPaymentCallback);
+
+// Transaction verification endpoint (auth required)
+router.get('/verify/:tx_ref', authenticateToken, verifyTransaction);
 
 module.exports = router;
