@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const WalletTransaction = require('../models/WalletTransaction');
+const Transaction = require('../models/Transaction');
 const { FlutterwaveService } = require('../utils/flutterwave');
 
 const flutterwaveService = new FlutterwaveService();
@@ -73,6 +74,27 @@ const fundWallet = async (req, res) => {
         message: paymentResult.message
       });
     }
+
+    // Create transaction record in database
+    const transaction = await Transaction.create({
+      tx_ref: paymentResult.data.tx_ref,
+      userId: user._id.toString(),
+      phone: user.phone || '',
+      biller_code: 'WALLET_FUNDING',
+      fullAmount: amount,
+      userAmount: amount,
+      isSubscriber: user.hasActiveSubscription || false,
+      status: 'initialized',
+      biller_reference: paymentResult.data.tx_ref,
+      idempotency_key: `WALLET_${user._id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    });
+
+    console.log('✅ Wallet funding transaction created:', {
+      tx_ref: paymentResult.data.tx_ref,
+      userId: user._id,
+      amount: amount,
+      status: 'initialized'
+    });
 
     res.json({
       success: true,
