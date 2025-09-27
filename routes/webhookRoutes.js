@@ -1,24 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const { handleFlutterwaveWebhook } = require('../controllers/webhookController');
-const { authenticateToken } = require('../middleware/auth');
 
 // Flutterwave webhook endpoint (no auth required)
 router.post('/flutterwave', handleFlutterwaveWebhook);
 
-// Simple transaction verification endpoint (auth required)
-router.get('/verify/:tx_ref', authenticateToken, async (req, res) => {
+// Simple transaction verification endpoint (no auth for now)
+router.get('/verify/:tx_ref', async (req, res) => {
   try {
     const { tx_ref } = req.params;
-    const user = req.user;
     
-    console.log(`🔍 Verifying transaction: ${tx_ref} for user: ${user.email}`);
+    console.log(`🔍 Verifying transaction: ${tx_ref}`);
     
     // Find transaction
     const Transaction = require('../models/Transaction');
     const transaction = await Transaction.findOne({ 
-      tx_ref,
-      userId: user._id.toString()
+      tx_ref
     });
     
     if (!transaction) {
