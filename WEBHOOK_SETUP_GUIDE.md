@@ -1,207 +1,197 @@
 # 🔔 Flutterwave Webhook Setup Guide
 
-## Overview
-This guide explains how to configure Flutterwave webhooks to automatically update transaction statuses in your MaralemPay application.
+## ✅ **Problem Solved: Transaction Status Updates**
 
-## 🎯 Problem Solved
-Previously, transactions were stuck with `"initialized"` status because there was no webhook listener to update them when payments completed. This guide fixes that issue.
+The issue where transactions were stuck with `"initialized"` status has been **completely resolved** with the implementation of:
 
-## 📋 Prerequisites
-- Flutterwave account with API keys
-- Backend deployed and accessible
-- Environment variables configured
+1. **Flutterwave Webhook Listener** (`/api/webhook/flutterwave`)
+2. **Transaction Verification Fallback** (`/api/webhook/verify/:tx_ref`)
+3. **Automatic Status Updates** for all payment types
 
-## 🔧 Backend Configuration
+---
 
-### 1. Environment Variables
-Ensure these are set in your production environment:
+## 🚀 **What's Been Implemented**
 
-```bash
+### **1. Webhook Controller** (`controllers/webhookController.js`)
+- ✅ **Signature Verification**: Validates Flutterwave webhook authenticity
+- ✅ **Event Processing**: Handles `charge.completed` and `charge.failed` events
+- ✅ **Status Updates**: Automatically updates transaction status to `successful` or `failed`
+- ✅ **Wallet Balance Updates**: Credits user wallet on successful funding
+- ✅ **Subscription Updates**: Activates user subscriptions on successful payment
+
+### **2. Transaction Verification** (`/api/webhook/verify/:tx_ref`)
+- ✅ **Manual Verification**: Fallback for when webhooks fail
+- ✅ **Retry Logic**: Built-in retry mechanism with configurable attempts
+- ✅ **Real-time Status**: Direct API call to Flutterwave for current status
+- ✅ **User Data Updates**: Updates wallet balance and subscription status
+
+### **3. Frontend Integration**
+- ✅ **Transaction Verification Service**: Robust verification with retry logic
+- ✅ **Wallet Provider Updates**: Enhanced wallet funding verification
+- ✅ **Error Handling**: Comprehensive error handling and user feedback
+
+---
+
+## 🔧 **Environment Variables Required**
+
+Add these to your `.env` file:
+
+```env
 # Flutterwave Configuration
-FLW_SECRET_KEY=FLWSECK-d6b4ee5933c0fb806a383d8c8475ed90-19985cff6a6vt-X
-FLW_PUBLIC_KEY=FLWPUBK-7f96c7d7bccb0b1976a07ff82fd983ca-X
-FLW_ENCRYPTION_KEY=d6b4ee5933c00335ed2a4c88
-FLW_SECRET_HASH=your-webhook-secret-hash
+FLW_SECRET_KEY=your_flutterwave_secret_key
+FLW_PUBLIC_KEY=your_flutterwave_public_key
+FLW_ENCRYPTION_KEY=your_flutterwave_encryption_key
+FLW_SECRET_HASH=your_webhook_secret_hash
+FLW_BASE_URL=https://api.flutterwave.com/v3
 
 # Backend Configuration
-BACKEND_URL=https://maralempay-backend.onrender.com
+BASE_URL=https://your-backend-domain.com
+MONGODB_URI=your_mongodb_connection_string
 ```
 
-### 2. Webhook Endpoint
-The webhook endpoint is already implemented at:
-```
-POST https://maralempay-backend.onrender.com/api/webhook/flutterwave
-```
+---
 
-### 3. Transaction Verification Endpoint
-Manual verification endpoint (fallback):
-```
-GET https://maralempay-backend.onrender.com/api/webhook/verify/{tx_ref}
-```
+## 🌐 **Flutterwave Dashboard Configuration**
 
-## 🔔 Flutterwave Dashboard Configuration
-
-### Step 1: Access Flutterwave Dashboard
-1. Login to your Flutterwave dashboard
+### **Step 1: Set Webhook URL**
+1. Login to your Flutterwave Dashboard
 2. Go to **Settings** → **Webhooks**
+3. Add webhook URL: `https://your-backend-domain.com/api/webhook/flutterwave`
+4. Select events: `charge.completed` and `charge.failed`
 
-### Step 2: Configure Webhook URL
-1. Click **"Add Webhook"**
-2. Set the webhook URL to:
-   ```
-   https://maralempay-backend.onrender.com/api/webhook/flutterwave
-   ```
+### **Step 2: Get Secret Hash**
+1. In the webhook settings, copy the **Secret Hash**
+2. Add it to your `.env` file as `FLW_SECRET_HASH`
 
-### Step 3: Select Events
-Enable these events:
-- ✅ `charge.completed` - When payment is successful
-- ✅ `charge.failed` - When payment fails
+---
 
-### Step 4: Set Secret Hash
-1. Generate a secret hash (e.g., `maralempay_webhook_secret_2024`)
-2. Set it in your environment variable: `FLW_SECRET_HASH=maralempay_webhook_secret_2024`
-3. Enter the same hash in Flutterwave dashboard
+## 🧪 **Testing the System**
 
-### Step 5: Test Webhook
-1. Click **"Test Webhook"** in Flutterwave dashboard
-2. Check your backend logs for webhook events
-
-## 🧪 Testing the System
-
-### 1. Run Webhook Test Script
+### **Test 1: Check Current Status**
 ```bash
 cd backend
 node test_webhook_system.js
 ```
 
-### 2. Test with Sample Transaction
+### **Test 2: Manual Transaction Verification**
 ```bash
-# Create a test transaction
-curl -X POST https://maralempay-backend.onrender.com/api/wallet/fund \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"amount": 1000}'
-```
-
-### 3. Verify Transaction Status
-```bash
-# Check transaction status
-curl -X GET https://maralempay-backend.onrender.com/api/webhook/verify/TX_REF_HERE \
+# Test with a transaction reference
+curl -X GET "https://your-backend-domain.com/api/webhook/verify/YOUR_TX_REF" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
-## 🔄 How It Works
-
-### 1. Payment Initiation
-- User initiates payment (wallet funding, subscription, etc.)
-- Transaction created with status `"initialized"`
-- Flutterwave payment link generated
-
-### 2. Payment Processing
-- User completes payment on Flutterwave
-- Flutterwave sends webhook to your backend
-- Webhook verifies signature and updates transaction
-
-### 3. Status Updates
-- **Successful Payment**: Status → `"successful"`
-  - Wallet funding: User balance increased
-  - Subscription: User subscription activated
-- **Failed Payment**: Status → `"failed"`
-
-### 4. Fallback Verification
-- If webhook fails, frontend can manually verify
-- Uses Flutterwave API to check transaction status
-- Updates database with correct status
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-#### 1. Webhook Not Receiving Events
-**Symptoms**: Transactions stuck at `"initialized"`
-**Solutions**:
-- Check webhook URL is correct
-- Verify `FLW_SECRET_HASH` matches Flutterwave dashboard
-- Check server logs for webhook errors
-- Test webhook endpoint manually
-
-#### 2. Invalid Signature Error
-**Symptoms**: `Invalid webhook signature` in logs
-**Solutions**:
-- Ensure `FLW_SECRET_HASH` is set correctly
-- Verify hash matches Flutterwave dashboard
-- Check webhook payload format
-
-#### 3. Transaction Not Found
-**Symptoms**: `Transaction not found for tx_ref` in logs
-**Solutions**:
-- Check transaction exists in database
-- Verify `tx_ref` format matches
-- Check transaction creation process
-
-### Debug Commands
-
-#### Check Stuck Transactions
+### **Test 3: Simulate Webhook**
 ```bash
-node test_webhook_system.js
-```
-
-#### Manual Transaction Update
-```javascript
-// In MongoDB shell or script
-db.transactions.updateOne(
-  { tx_ref: "YOUR_TX_REF" },
-  { 
-    $set: { 
-      status: "successful",
-      flw_ref: "FLW_REF_HERE",
-      updatedAt: new Date()
+# Test webhook endpoint
+curl -X POST "https://your-backend-domain.com/api/webhook/flutterwave" \
+  -H "Content-Type: application/json" \
+  -H "verif-hash: YOUR_SECRET_HASH" \
+  -d '{
+    "event": "charge.completed",
+    "data": {
+      "status": "successful",
+      "tx_ref": "YOUR_TX_REF",
+      "flw_ref": "FLW_REF_123",
+      "amount": 1000,
+      "customer": {
+        "email": "test@example.com"
+      }
     }
-  }
-)
+  }'
 ```
-
-## 📊 Monitoring
-
-### 1. Log Monitoring
-Watch for these log messages:
-- `🔔 Webhook received:` - Webhook event received
-- `✅ Transaction verified:` - Successful verification
-- `❌ Invalid webhook signature` - Signature verification failed
-- `⚠️ Transaction not found` - Transaction lookup failed
-
-### 2. Database Monitoring
-Monitor these collections:
-- `transactions` - Payment transactions
-- `wallettransactions` - Wallet operations
-- `users` - User wallet balances and subscriptions
-
-### 3. Health Checks
-Regular checks:
-- Webhook endpoint accessibility
-- Environment variables
-- Database connectivity
-- Flutterwave API status
-
-## 🎉 Success Indicators
-
-Your webhook system is working correctly when:
-- ✅ Transactions update from `"initialized"` to `"successful"`/`"failed"`
-- ✅ Wallet balances update after funding
-- ✅ Subscriptions activate after payment
-- ✅ No stuck transactions in database
-- ✅ Webhook events logged in server
-
-## 📞 Support
-
-If you encounter issues:
-1. Check server logs for error messages
-2. Run the test script: `node test_webhook_system.js`
-3. Verify Flutterwave dashboard webhook configuration
-4. Test webhook endpoint manually with sample payload
 
 ---
 
-**Last Updated**: September 27, 2025
-**Version**: 1.0
-**Status**: ✅ Production Ready
+## 📊 **Transaction Flow**
+
+### **Before (Broken)**
+```
+1. User initiates payment → Transaction created with "initialized" status
+2. Payment completes → Status remains "initialized" ❌
+3. User wallet not updated ❌
+4. Subscription not activated ❌
+```
+
+### **After (Fixed)**
+```
+1. User initiates payment → Transaction created with "initialized" status
+2. Payment completes → Flutterwave sends webhook ✅
+3. Webhook processes → Status updated to "successful" ✅
+4. Wallet balance updated ✅
+5. Subscription activated ✅
+6. Fallback verification available if webhook fails ✅
+```
+
+---
+
+## 🔍 **Monitoring & Debugging**
+
+### **Check Transaction Status**
+```javascript
+// In your database
+db.transactions.find({ status: "initialized" }) // Should be empty after webhook setup
+db.transactions.find({ status: "successful" })  // Should show completed transactions
+```
+
+### **Check Wallet Transactions**
+```javascript
+db.wallettransactions.find().sort({ createdAt: -1 }).limit(10)
+```
+
+### **Check User Balances**
+```javascript
+db.users.find({ walletBalance: { $gt: 0 } })
+```
+
+---
+
+## 🚨 **Troubleshooting**
+
+### **Issue: Webhooks not received**
+- ✅ Check webhook URL is correct in Flutterwave dashboard
+- ✅ Verify `FLW_SECRET_HASH` is set correctly
+- ✅ Ensure webhook endpoint is accessible from internet
+- ✅ Check server logs for webhook processing
+
+### **Issue: Transactions still stuck**
+- ✅ Run manual verification: `GET /api/webhook/verify/:tx_ref`
+- ✅ Check if webhook signature verification is working
+- ✅ Verify database connection and transaction updates
+
+### **Issue: Wallet balance not updating**
+- ✅ Check if transaction type is `WALLET_FUNDING`
+- ✅ Verify user ID matches transaction user ID
+- ✅ Check wallet transaction creation in logs
+
+---
+
+## 🎯 **Key Benefits**
+
+1. **✅ Automatic Status Updates**: No more stuck "initialized" transactions
+2. **✅ Real-time Wallet Updates**: Instant balance updates on successful payments
+3. **✅ Subscription Activation**: Automatic subscription activation
+4. **✅ Fallback Verification**: Manual verification if webhooks fail
+5. **✅ Robust Error Handling**: Comprehensive error handling and logging
+6. **✅ Security**: Webhook signature verification for security
+
+---
+
+## 📱 **Frontend Integration**
+
+The frontend now includes:
+- **Transaction Verification Service**: Automatic retry logic
+- **Enhanced Wallet Provider**: Better error handling
+- **Real-time Status Updates**: Immediate feedback to users
+
+---
+
+## 🎉 **Result**
+
+Your payment system now works correctly:
+- ✅ Transactions update from "initialized" to "successful"/"failed"
+- ✅ Wallet balances update automatically
+- ✅ Subscriptions activate properly
+- ✅ Users get real-time payment confirmation
+- ✅ Robust fallback system for reliability
+
+**The app is now working in the correct way!** 🚀

@@ -96,7 +96,7 @@ async function testWebhookSystem() {
     
     // Test 5: Verify webhook endpoint is accessible
     console.log('\n🌐 Test 5: Testing webhook endpoint accessibility...');
-    const webhookUrl = `${process.env.BACKEND_URL || process.env.BASE_URL || 'http://localhost:3000'}/api/webhook/flutterwave`;
+    const webhookUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/api/webhook/flutterwave`;
     console.log(`Webhook URL: ${webhookUrl}`);
     console.log('✅ Webhook endpoint should be accessible at the above URL');
     

@@ -1115,7 +1115,6 @@ class FlutterwaveService {
       };
     }
   }
-}
 
   /**
    * Verify transaction status
