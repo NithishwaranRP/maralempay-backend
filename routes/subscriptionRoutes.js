@@ -7,7 +7,9 @@ const {
   verifySubscriptionPayment,
   getSubscriptionStatus,
   getSubscriptionHistory,
-  manualActivateSubscription
+  manualActivateSubscription,
+  updateSubscriptionStatus,
+  verifySubscriptionStatus
 } = require('../controllers/subscriptionController');
 
 // All subscription routes require authentication
@@ -38,5 +40,14 @@ router.get('/history', getSubscriptionHistory);
 // POST /api/subscription/manual-activate
 // Body: { payment_ref }
 router.post('/manual-activate', manualActivateSubscription);
+
+// Update subscription status (for mobile app)
+// POST /api/subscription/update-status
+// Body: { transactionId, txRef, status, paymentData }
+router.post('/update-status', updateSubscriptionStatus);
+
+// Verify subscription status
+// GET /api/subscription/verify
+router.get('/verify', verifySubscriptionStatus);
 
 module.exports = router;

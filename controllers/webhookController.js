@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
+const Subscription = require('../models/Subscription');
 const { FlutterwaveService } = require('../utils/flutterwave');
 // Import email service conditionally to avoid initialization errors during testing
 let emailService;
@@ -76,10 +77,15 @@ const processSuccessfulPayment = async (paymentData) => {
     
     // Check if this is a subscription payment
     const subscriptionAmount = parseFloat(process.env.SUBSCRIPTION_AMOUNT || 100);
-    const isSubscriptionPayment = Math.abs(parseFloat(amount) - subscriptionAmount) < 1;
+    const isSubscriptionPayment = Math.abs(parseFloat(amount) - subscriptionAmount) < 1 || 
+                                  tx_ref.startsWith('SUB_') ||
+                                  meta?.payment_type === 'subscription';
     
     if (isSubscriptionPayment) {
       console.log('💳 [WEBHOOK] This is a subscription payment, processing subscription activation...');
+      console.log('   Amount:', amount);
+      console.log('   TX Ref:', tx_ref);
+      console.log('   User ID:', user._id);
       await processSubscriptionPayment(user, amount, tx_ref, paymentData);
       return;
     }

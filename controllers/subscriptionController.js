@@ -903,11 +903,229 @@ const manualActivateSubscription = async (req, res) => {
   }
 };
 
+/**
+ * Update subscription status (for mobile app)
+ * POST /api/subscription/update-status
+ * Body: { transactionId, txRef, status, paymentData }
+ */
+const updateSubscriptionStatus = async (req, res) => {
+  try {
+    console.log('🔄 Updating subscription status...');
+    console.log('   Request body:', JSON.stringify(req.body, null, 2));
+    
+    const { transactionId, txRef, status, paymentData: requestPaymentData } = req.body;
+    const user = req.user;
+    
+    if (!transactionId || !txRef) {
+      return res.status(400).json({
+        success: false,
+        message: 'Transaction ID and TX Ref are required'
+      });
+    }
+    
+    console.log('   User ID:', user._id);
+    console.log('   Transaction ID:', transactionId);
+    console.log('   TX Ref:', txRef);
+    console.log('   Status:', status);
+    
+    // Verify the payment with Flutterwave
+    const verificationResult = await flutterwaveService.verifyPayment(txRef);
+    
+    if (!verificationResult.success) {
+      console.error('❌ Payment verification failed:', verificationResult.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed: ' + verificationResult.message
+      });
+    }
+    
+    const paymentData = verificationResult.data;
+    
+    if (paymentData.status === 'successful') {
+      console.log('✅ Payment verified as successful');
+      
+      // Calculate subscription expiry (6 months)
+      const subscriptionExpiry = new Date();
+      subscriptionExpiry.setMonth(subscriptionExpiry.getMonth() + 6);
+      
+      // Update user subscription status
+      const updatedUser = await User.findByIdAndUpdate(user._id, {
+        isSubscriber: true,
+        subscriptionStatus: 'active',
+        subscriptionDate: new Date(),
+        subscriptionExpiry: subscriptionExpiry,
+        updatedAt: new Date()
+      }, { new: true });
+      
+      if (!updatedUser) {
+        console.error('❌ User not found or update failed');
+        return res.status(404).json({
+          success: false,
+          message: 'User not found or update failed'
+        });
+      }
+      
+      console.log('✅ User subscription status updated successfully');
+      console.log('   isSubscriber:', updatedUser.isSubscriber);
+      console.log('   subscriptionStatus:', updatedUser.subscriptionStatus);
+      console.log('   subscriptionExpiry:', updatedUser.subscriptionExpiry);
+      
+      // Create or update subscription record
+      let subscription = await Subscription.findOne({ user: user._id });
+      
+      if (subscription) {
+        // Update existing subscription
+        subscription.status = 'active';
+        subscription.paymentStatus = 'paid';
+        subscription.amount = parseFloat(paymentData.amount);
+        subscription.startDate = new Date();
+        subscription.endDate = subscriptionExpiry;
+        subscription.paymentReference = txRef;
+        subscription.flutterwaveRef = paymentData.flw_ref;
+        subscription.updatedAt = new Date();
+        await subscription.save();
+        
+        console.log('✅ Existing subscription updated');
+      } else {
+        // Create new subscription
+        subscription = new Subscription({
+          user: user._id,
+          planType: '6_months',
+          amount: parseFloat(paymentData.amount),
+          duration: 6,
+          durationUnit: 'months',
+          startDate: new Date(),
+          endDate: subscriptionExpiry,
+          status: 'active',
+          paymentStatus: 'paid',
+          paymentReference: txRef,
+          flutterwaveRef: paymentData.flw_ref,
+          discountPercentage: 10,
+          benefits: {
+            airtimeDiscount: 10,
+            dataDiscount: 10,
+            billPaymentDiscount: 10
+          }
+        });
+        
+        await subscription.save();
+        console.log('✅ New subscription created');
+      }
+      
+      res.json({
+        success: true,
+        message: 'Subscription status updated successfully',
+        data: {
+          user: {
+            isSubscriber: updatedUser.isSubscriber,
+            subscriptionStatus: updatedUser.subscriptionStatus,
+            subscriptionExpiry: updatedUser.subscriptionExpiry,
+            subscriptionDate: updatedUser.subscriptionDate
+          },
+          subscription: {
+            id: subscription._id,
+            status: subscription.status,
+            paymentStatus: subscription.paymentStatus,
+            amount: subscription.amount,
+            planType: subscription.planType,
+            duration: subscription.duration,
+            discountPercentage: subscription.discountPercentage,
+            startDate: subscription.startDate,
+            endDate: subscription.endDate
+          }
+        }
+      });
+    } else {
+      console.error('❌ Payment was not successful:', paymentData.status);
+      return res.status(400).json({
+        success: false,
+        message: 'Payment was not successful',
+        data: {
+          paymentStatus: paymentData.status
+        }
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error updating subscription status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating subscription status: ' + error.message
+    });
+  }
+};
+
+/**
+ * Verify subscription status
+ * GET /api/subscription/verify
+ */
+const verifySubscriptionStatus = async (req, res) => {
+  try {
+    const user = req.user;
+    
+    console.log('🔍 Verifying subscription status for user:', user._id);
+    
+    // Get user with subscription details
+    const userWithSubscription = await User.findById(user._id);
+    
+    if (!userWithSubscription) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Get active subscription
+    const activeSubscription = await Subscription.findOne({
+      user: user._id,
+      status: 'active',
+      paymentStatus: 'paid',
+      endDate: { $gt: new Date() }
+    });
+    
+    const hasActiveSubscription = !!activeSubscription;
+    
+    console.log('   isSubscriber:', userWithSubscription.isSubscriber);
+    console.log('   subscriptionStatus:', userWithSubscription.subscriptionStatus);
+    console.log('   hasActiveSubscription:', hasActiveSubscription);
+    
+    res.json({
+      success: true,
+      message: 'Subscription status verified successfully',
+      data: {
+        isSubscriber: userWithSubscription.isSubscriber,
+        subscriptionStatus: userWithSubscription.subscriptionStatus,
+        subscriptionExpiry: userWithSubscription.subscriptionExpiry,
+        subscriptionDate: userWithSubscription.subscriptionDate,
+        hasActiveSubscription: hasActiveSubscription,
+        subscription: activeSubscription ? {
+          id: activeSubscription._id,
+          status: activeSubscription.status,
+          paymentStatus: activeSubscription.paymentStatus,
+          amount: activeSubscription.amount,
+          planType: activeSubscription.planType,
+          duration: activeSubscription.duration,
+          discountPercentage: activeSubscription.discountPercentage,
+          startDate: activeSubscription.startDate,
+          endDate: activeSubscription.endDate
+        } : null
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error verifying subscription status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error verifying subscription status: ' + error.message
+    });
+  }
+};
+
 module.exports = {
   getSubscriptionPlans,
   purchaseSubscription,
   verifySubscriptionPayment,
   getSubscriptionStatus,
   getSubscriptionHistory,
-  manualActivateSubscription
+  manualActivateSubscription,
+  updateSubscriptionStatus,
+  verifySubscriptionStatus
 };
