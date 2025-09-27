@@ -32,7 +32,7 @@ router.get('/verify/:tx_ref', async (req, res) => {
       
       // For now, assume payment was successful if we're verifying
       // In a real scenario, you'd call Flutterwave API to verify
-      transaction.status = 'successful';
+      transaction.status = 'payment_completed';
       transaction.flw_ref = `FLW_REF_${Date.now()}`;
       transaction.updatedAt = new Date();
       await transaction.save();
