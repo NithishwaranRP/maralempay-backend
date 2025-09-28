@@ -477,10 +477,13 @@ class FlutterwaveService {
       console.log('🔍 Flutterwave Payment Verification: Checking customer payment status for tx_ref:', txRef);
 
       const response = await axios.get(
-        `${this.baseURL}/transactions/${txRef}/verify`,
+        `${this.baseURL}/transactions/verify_by_reference`,
         { 
           headers: this.headers,
-          timeout: 15000 // 15 second timeout
+          timeout: 15000, // 15 second timeout
+          params: {
+            tx_ref: txRef
+          }
         }
       );
 
