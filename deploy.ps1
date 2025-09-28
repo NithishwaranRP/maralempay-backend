@@ -15,3 +15,4 @@ Write-Host "🎯 What this fixes:" -ForegroundColor Cyan
 Write-Host "- Transaction records are created when wallet funding is initiated" -ForegroundColor White
 Write-Host "- Webhook can now find and update the transaction" -ForegroundColor White
 Write-Host "- Wallet balance will update automatically after payment" -ForegroundColor White
+
