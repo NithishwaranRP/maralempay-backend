@@ -15,7 +15,7 @@ const subscriptionSchema = new mongoose.Schema({
   amount: {
     type: Number,
     required: true,
-    default: 100 // 100 NGN for 6 months
+    default: 4500 // 4500 NGN for 6 months
   },
   duration: {
     type: Number,
