@@ -78,9 +78,20 @@ const requireSubscription = async (req, res, next) => {
     }
 
     // Check if user has an active subscription
-    const hasActiveSubscription = user.isSubscribed && 
+    const hasActiveSubscription = user.isSubscriber && 
+      user.subscriptionStatus === 'active' &&
       user.subscriptionExpiry && 
       user.subscriptionExpiry > new Date();
+    
+    console.log('🔍 Subscription Check:', {
+      user_id: user._id,
+      email: user.email,
+      isSubscriber: user.isSubscriber,
+      subscriptionStatus: user.subscriptionStatus,
+      subscriptionExpiry: user.subscriptionExpiry,
+      hasActiveSubscription: hasActiveSubscription,
+      route: req.path
+    });
     
     if (!hasActiveSubscription) {
       return res.status(403).json({
