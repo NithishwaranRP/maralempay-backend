@@ -519,15 +519,18 @@ class FlutterwaveAirtimeController {
         console.log('💾 Transaction marked as paid:', transaction.tx_ref);
       }
 
-      // Step 6: Create Bill Payment
-      console.log('📱 Creating bill payment...');
-      const billPaymentResult = await this.createBillPayment(transaction || {
-        tx_ref,
-        phone: verificationData.customer?.phone || verificationData.meta?.phone,
-        biller_code: verificationData.meta?.biller_code,
-        item_code: verificationData.meta?.item_code,
-        fullAmount: verificationData.meta?.fullAmount
-      });
+      // Step 6: Create Bill Payment with Merchant Discount Absorption
+      console.log('📱 Creating bill payment with merchant discount absorption...');
+      const billPaymentResult = await this.fulfillDiscountedBillPayment(
+        verificationData.meta?.userId || transaction?.userId,
+        verificationData.meta?.biller_code || transaction?.biller_code,
+        verificationData.meta?.item_code || transaction?.item_code,
+        verificationData.meta?.fullAmount || transaction?.fullAmount,
+        verificationData.meta?.userAmount || transaction?.userAmount,
+        'NGN',
+        verificationData.customer?.phone || verificationData.meta?.phone || transaction?.phone,
+        verificationData.tx_ref || transaction?.tx_ref || tx_ref
+      );
 
       if (billPaymentResult.success) {
         // Update transaction with bill delivery details
@@ -580,19 +583,32 @@ class FlutterwaveAirtimeController {
   }
 
   /**
-   * Create Bill Payment using Flutterwave Bills API
+   * Create Bill Payment using Flutterwave Bills API with Merchant Discount Absorption
+   * This function pays the FULL amount to the biller while the customer only paid the discounted amount
    * Reference: https://developer.flutterwave.com/docs/bill-payments/create-bill-payment
    */
   async createBillPayment(transaction, retryCount = 0) {
     const maxRetries = 3;
     
     try {
-      console.log('📱 Creating bill payment:', {
+      // Calculate merchant discount absorption
+      const fullPlanPrice = transaction.fullAmount;        // Full price (e.g., ₦100)
+      const customerPaidAmount = transaction.userAmount;   // Customer paid (e.g., ₦90)
+      const merchantCoverAmount = fullPlanPrice - customerPaidAmount; // Merchant covers (e.g., ₦10)
+
+      console.log('💰 Merchant Discount Absorption Logic:', {
+        fullPlanPrice: fullPlanPrice,
+        customerPaidAmount: customerPaidAmount,
+        merchantCoverAmount: merchantCoverAmount,
         biller_code: transaction.biller_code,
         item_code: transaction.item_code,
-        phone: transaction.phone,
-        amount: transaction.fullAmount
+        phone: transaction.phone
       });
+
+      // Validate amounts
+      if (merchantCoverAmount < 0 || customerPaidAmount <= 0) {
+        throw new Error(`Invalid payment calculation: fullPlanPrice=${fullPlanPrice}, customerPaidAmount=${customerPaidAmount}`);
+      }
 
       let billPaymentPayload;
       let endpoint;
@@ -602,12 +618,15 @@ class FlutterwaveAirtimeController {
         endpoint = `${this.baseURL}/billers/${transaction.biller_code}/items/${transaction.item_code}/payment`;
         billPaymentPayload = {
           customer: transaction.phone,
-          amount: transaction.fullAmount,
+          amount: fullPlanPrice, // CRITICAL: Pay the FULL amount to activate the service
           reference: transaction.tx_ref,
           meta: {
             tx_ref: transaction.tx_ref,
             userId: transaction.userId,
-            payment_type: 'airtime'
+            payment_type: 'airtime',
+            customer_paid: customerPaidAmount,
+            merchant_covered: merchantCoverAmount,
+            discount_absorption: true
           }
         };
       } else {
@@ -616,10 +635,15 @@ class FlutterwaveAirtimeController {
         billPaymentPayload = {
           country: 'NG',
           customer: transaction.phone,
-          amount: transaction.fullAmount,
+          amount: fullPlanPrice, // CRITICAL: Pay the FULL amount to activate the service
           type: 'airtime',
           reference: transaction.tx_ref,
-          biller_code: transaction.biller_code
+          biller_code: transaction.biller_code,
+          meta: {
+            customer_paid: customerPaidAmount,
+            merchant_covered: merchantCoverAmount,
+            discount_absorption: true
+          }
         };
       }
 
@@ -630,16 +654,23 @@ class FlutterwaveAirtimeController {
         { headers: this.headers }
       );
 
-      console.log('✅ Bill payment successful:', {
+      console.log('✅ Bill payment successful with merchant discount absorption:', {
         status: response.data.status,
         reference: response.data.data?.reference,
-        biller_reference: response.data.data?.biller_reference
+        biller_reference: response.data.data?.biller_reference,
+        fullAmountPaid: fullPlanPrice,
+        customerPaid: customerPaidAmount,
+        merchantCovered: merchantCoverAmount
       });
 
       return {
         success: true,
         biller_reference: response.data.data?.biller_reference,
         biller_status: response.data.data?.status || 'delivered',
+        fullAmountPaid: fullPlanPrice,
+        customerPaid: customerPaidAmount,
+        merchantCovered: merchantCoverAmount,
+        discountAbsorption: true,
         response: response.data
       };
 
@@ -808,6 +839,105 @@ class FlutterwaveAirtimeController {
         success: false,
         message: 'Failed to get payment status'
       });
+    }
+  }
+
+  /**
+   * Merchant Discount Absorption Function
+   * This function pays the FULL amount to the biller while the customer only paid the discounted amount
+   * The merchant absorbs the discount difference from their Flutterwave balance
+   * 
+   * @param {string} customerId - The unique identifier for the customer
+   * @param {string} billerCode - The biller's unique code (e.g., 'MTN_BIL')
+   * @param {string} itemCode - The bill item's unique code (e.g., 'AIR_100')
+   * @param {number} fullPlanPrice - The actual, non-discounted cost of the bill/plan
+   * @param {number} customerPaidAmount - The discounted amount the customer paid
+   * @param {string} currency - The currency (e.g., 'NGN')
+   * @param {string} phone - Customer's phone number
+   * @param {string} txRef - Transaction reference
+   */
+  async fulfillDiscountedBillPayment(customerId, billerCode, itemCode, fullPlanPrice, customerPaidAmount, currency, phone, txRef) {
+    try {
+      // 1. Calculate the financial difference (the discount we must cover)
+      const merchantCoverAmount = fullPlanPrice - customerPaidAmount;
+
+      if (merchantCoverAmount < 0 || customerPaidAmount <= 0) {
+        console.error("❌ Invalid payment calculation:", {
+          fullPlanPrice,
+          customerPaidAmount,
+          merchantCoverAmount
+        });
+        throw new Error("Invalid payment or calculation. Check fullPlanPrice and customerPaidAmount.");
+      }
+
+      console.log(`💰 Discount Absorption: Customer paid ${customerPaidAmount} ${currency}. Merchant will cover ${merchantCoverAmount} ${currency} to pay the full price of ${fullPlanPrice} ${currency}.`);
+
+      // 2. Prepare bill payment payload with FULL amount
+      let billPaymentPayload;
+      let endpoint;
+
+      if (itemCode) {
+        endpoint = `${this.baseURL}/billers/${billerCode}/items/${itemCode}/payment`;
+        billPaymentPayload = {
+          customer: phone,
+          amount: fullPlanPrice, // CRITICAL: The full price is passed here
+          reference: txRef,
+          meta: {
+            tx_ref: txRef,
+            userId: customerId,
+            payment_type: 'airtime',
+            customer_paid: customerPaidAmount,
+            merchant_covered: merchantCoverAmount,
+            discount_absorption: true
+          }
+        };
+      } else {
+        endpoint = `${this.baseURL}/bills`;
+        billPaymentPayload = {
+          country: 'NG',
+          customer: phone,
+          amount: fullPlanPrice, // CRITICAL: The full price is passed here
+          type: 'airtime',
+          reference: txRef,
+          biller_code: billerCode,
+          meta: {
+            customer_paid: customerPaidAmount,
+            merchant_covered: merchantCoverAmount,
+            discount_absorption: true
+          }
+        };
+      }
+
+      // 3. Make the API call to Flutterwave
+      console.log('🔗 Calling Flutterwave bill payment endpoint:', endpoint);
+      const response = await axios.post(
+        endpoint,
+        billPaymentPayload,
+        { headers: this.headers }
+      );
+
+      // 4. Process the Bill Payment Response
+      if (response.data.status === 'success' && response.data.data?.status === 'successful') {
+        console.log(`✅ Bill payment for ${fullPlanPrice} ${currency} successful. Discount of ${merchantCoverAmount} ${currency} absorbed from merchant balance.`);
+        
+        return {
+          success: true,
+          biller_reference: response.data.data?.biller_reference,
+          biller_status: response.data.data?.status || 'delivered',
+          fullAmountPaid: fullPlanPrice,
+          customerPaid: customerPaidAmount,
+          merchantCovered: merchantCoverAmount,
+          discountAbsorption: true,
+          response: response.data
+        };
+      } else {
+        console.error("❌ Bill payment failed. Error:", response.data.message);
+        throw new Error(`Bill payment failed: ${response.data.message}`);
+      }
+
+    } catch (error) {
+      console.error('❌ Error in fulfillDiscountedBillPayment:', error);
+      throw error;
     }
   }
 
