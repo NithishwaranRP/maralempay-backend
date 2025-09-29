@@ -86,7 +86,6 @@ app.use('/api/bills-api', require('./routes/billsApiRoutes'));
 app.use('/api/referrals', require('./routes/referrals'));
 app.use('/api/payment', require('./routes/paymentVerificationRoutes'));
 app.use('/api/maralem-bills', require('./routes/maralemBillsRoutes'));
-app.use('/api/flutterwave', require('./routes/flutterwaveAirtimeRoutes'));
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -105,8 +104,7 @@ app.get('/', (req, res) => {
       subscription: '/api/subscription',
       bills: '/api/bills',
       referrals: '/api/referrals',
-      maralemBills: '/api/maralem-bills',
-      flutterwave: '/api/flutterwave'
+      maralemBills: '/api/maralem-bills'
     },
     documentation: 'https://github.com/your-repo/maralempay-api'
   });
