@@ -149,7 +149,7 @@ const verifyEmail = async (req, res) => {
     // Update referrer's stats if applicable
     if (user.referredBy) {
       await User.findByIdAndUpdate(user.referredBy, {
-        $inc: { totalReferrals: 1, referralRewards: 500 } // ₦500 reward per referral
+        $inc: { totalReferrals: 1, referralRewards: 50 } // ₦50 reward per referral
       });
     }
 

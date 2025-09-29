@@ -14,11 +14,11 @@ const getSubscriptionPlans = async (req, res) => {
     const plans = [
       {
         id: '6_months',
-        name: '6 Months Premium Plan',
-        description: 'Get 10% discount on all airtime, data, and bill payments for 6 months',
-        duration: 6,
+        name: 'Monthly Premium Plan',
+        description: 'Get 10% discount on all airtime, data, and bill payments for 1 month',
+        duration: 1,
         durationUnit: 'months',
-        amount: 4500,
+        amount: 750,
         currency: 'NGN',
         discountPercentage: 10,
         benefits: [
@@ -146,8 +146,8 @@ const purchaseSubscription = async (req, res) => {
     // Define subscription plan details
     const planDetails = {
       '6_months': {
-        amount: 4500,
-        duration: 6,
+        amount: 750,
+        duration: 1,
         durationUnit: 'months',
         discountPercentage: 10
       }
@@ -944,9 +944,9 @@ const updateSubscriptionStatus = async (req, res) => {
     if (paymentData.status === 'successful') {
       console.log('✅ Payment verified as successful');
       
-      // Calculate subscription expiry (6 months)
+      // Calculate subscription expiry (1 month)
       const subscriptionExpiry = new Date();
-      subscriptionExpiry.setMonth(subscriptionExpiry.getMonth() + 6);
+      subscriptionExpiry.setMonth(subscriptionExpiry.getMonth() + 1);
       
       // Update user subscription status
       const updatedUser = await User.findByIdAndUpdate(user._id, {
@@ -992,7 +992,7 @@ const updateSubscriptionStatus = async (req, res) => {
           user: user._id,
           planType: '6_months',
           amount: parseFloat(paymentData.amount),
-          duration: 6,
+          duration: 1,
           durationUnit: 'months',
           startDate: new Date(),
           endDate: subscriptionExpiry,
