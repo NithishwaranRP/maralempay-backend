@@ -38,7 +38,7 @@ const transactionSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ['initialized', 'successful', 'payment_completed', 'fulfilled', 'fulfillment_failed', 'failed', 'refunded', 'failed_refunded'],
+    enum: ['initialized', 'paid', 'delivered', 'successful', 'payment_completed', 'fulfilled', 'fulfillment_failed', 'failed', 'refunded', 'failed_refunded'],
     default: 'initialized',
     index: true
   },
