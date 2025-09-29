@@ -15,8 +15,15 @@ async function quickActivate() {
     await mongoose.connect(mongoUri);
     console.log('✅ Connected to MongoDB');
     
-    // Import User model
-    const User = require('./models/User');
+    // Define User schema directly
+    const userSchema = new mongoose.Schema({
+      email: String,
+      isSubscribed: Boolean,
+      subscriptionExpiry: Date,
+      subscriptionActivatedAt: Date
+    }, { timestamps: true });
+    
+    const User = mongoose.model('User', userSchema);
     
     const userEmail = 'nithishnt2002@gmail.com';
     

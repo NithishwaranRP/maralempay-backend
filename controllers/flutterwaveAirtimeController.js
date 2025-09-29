@@ -1,6 +1,39 @@
 const axios = require('axios');
 const crypto = require('crypto');
-const Transaction = require('../models/Transaction');
+const mongoose = require('mongoose');
+
+// MongoDB Transaction Schema for idempotency and status tracking
+const transactionSchema = new mongoose.Schema({
+  tx_ref: { type: String, required: true, unique: true },
+  userId: { type: String, required: true },
+  phone: { type: String, required: true },
+  biller_code: { type: String, required: true },
+  item_code: { type: String },
+  fullAmount: { type: Number, required: true },
+  userAmount: { type: Number, required: true },
+  isSubscriber: { type: Boolean, default: false },
+  status: { 
+    type: String, 
+    enum: ['initialized', 'paid', 'delivered', 'failed', 'refunded', 'failed_refunded'],
+    default: 'initialized'
+  },
+  flutterwave_transaction_id: { type: String },
+  biller_reference: { type: String },
+  biller_status: { type: String },
+  deliveredAt: { type: Date },
+  refundedAt: { type: Date },
+  refund_amount: { type: Number },
+  idempotency_key: { type: String, required: true, unique: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+  error_logs: [{ 
+    timestamp: { type: Date, default: Date.now },
+    error: String,
+    context: String
+  }]
+});
+
+const Transaction = mongoose.model('Transaction', transactionSchema);
 
 class FlutterwaveAirtimeController {
   constructor() {
