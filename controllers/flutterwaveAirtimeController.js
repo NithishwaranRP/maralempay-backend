@@ -300,23 +300,9 @@ class FlutterwaveAirtimeController {
          });
        }
 
-      // TEMPORARY: Return pending status for airtime/data purchases
-      // This prevents users from being charged while system is being updated
-      return res.status(200).json({
-        success: false,
-        message: 'Airtime and data purchases are temporarily unavailable. Please try again later.',
-        status: 'pending',
-        error_code: 'SERVICE_TEMPORARILY_UNAVAILABLE',
-        data: {
-          tx_ref: `PENDING_${userId}_${Date.now()}`,
-          phone,
-          biller_code,
-          item_code,
-          amount,
-          isSubscriber,
-          message: 'Our airtime and data services are currently being updated. No charges will be made to your account. Please check back later.'
-        }
-      });
+      // ENABLED: Airtime/data purchases are now available for TEST API
+      // This allows testing with Flutterwave TEST keys
+      console.log('✅ Airtime/data service is ENABLED for TEST API');
 
       // Step 2: Determine fullAmount
       let fullAmount = amount;
@@ -852,5 +838,9 @@ class FlutterwaveAirtimeController {
 }
 
 module.exports = FlutterwaveAirtimeController;
+
+
+
+
 
 
