@@ -73,6 +73,50 @@ class FlutterwaveAirtimeController {
   }
 
   /**
+   * GET /api/flutterwave/billers
+   * Fetch all billers (for fallback)
+   * Reference: https://developer.flutterwave.com/docs/bill-payments/overview
+   */
+  async getAllBillers(req, res) {
+    try {
+      console.log('🔍 Fetching all billers from Flutterwave...');
+
+      const response = await axios.get(
+        `${this.baseURL}/billers`,
+        { headers: this.headers }
+      );
+
+      console.log('✅ All billers fetched successfully:', {
+        status: response.data.status,
+        count: response.data.data?.length || 0
+      });
+
+      res.json({
+        success: true,
+        data: response.data.data,
+        message: 'All billers fetched successfully',
+        debug: process.env.NODE_ENV === 'development' ? {
+          rawResponse: response.data,
+          endpoint: `${this.baseURL}/billers`
+        } : undefined
+      });
+
+    } catch (error) {
+      console.error('❌ Error fetching all billers:', error.response?.data || error.message);
+      
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch all billers',
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+        debug: process.env.NODE_ENV === 'development' ? {
+          status: error.response?.status,
+          data: error.response?.data
+        } : undefined
+      });
+    }
+  }
+
+  /**
    * GET /api/flutterwave/billers/:categoryCode
    * Fetch billers for a specific category
    * Reference: https://developer.flutterwave.com/docs/bill-payments/overview
@@ -82,69 +126,70 @@ class FlutterwaveAirtimeController {
       const { categoryCode } = req.params;
       console.log('🔍 Fetching billers for category:', categoryCode);
 
-      // Try multiple endpoints as fallback
       let billers = [];
       let usedEndpoint = '';
 
-      // Method 1: Try /v3/bill-categories/{id}/billers
-      try {
-        const response1 = await axios.get(
-          `${this.baseURL}/bill-categories/${categoryCode}/billers`,
-          { headers: this.headers }
-        );
-        
-        if (response1.data.data && response1.data.data.length > 0) {
-          billers = response1.data.data;
-          usedEndpoint = `/bill-categories/${categoryCode}/billers`;
-          console.log('✅ Method 1 successful:', usedEndpoint);
-        }
-      } catch (error1) {
-        console.log('⚠️ Method 1 failed:', error1.response?.status, error1.response?.data?.message);
-      }
-
-      // Method 2: Fallback to /v3/billers with category filter
-      if (billers.length === 0) {
+      // For AIRTIME and MOBILEDATA categories, use direct Flutterwave API
+      if (categoryCode === 'AIRTIME' || categoryCode === 'MOBILEDATA') {
         try {
-          const response2 = await axios.get(
-            `${this.baseURL}/billers`,
-            { 
-              headers: this.headers,
-              params: { category: categoryCode }
-            }
-          );
-          
-          if (response2.data.data && response2.data.data.length > 0) {
-            billers = response2.data.data;
-            usedEndpoint = `/billers?category=${categoryCode}`;
-            console.log('✅ Method 2 successful:', usedEndpoint);
-          }
-        } catch (error2) {
-          console.log('⚠️ Method 2 failed:', error2.response?.status, error2.response?.data?.message);
-        }
-      }
-
-      // Method 3: Fallback to /v3/billers without filter (get all and filter client-side)
-      if (billers.length === 0) {
-        try {
-          const response3 = await axios.get(
+          // Get all billers and filter for telecom providers
+          const response = await axios.get(
             `${this.baseURL}/billers`,
             { headers: this.headers }
           );
           
-          if (response3.data.data) {
-            // Filter for telecom-related billers
-            billers = response3.data.data.filter(biller => {
+          if (response.data.data) {
+            // Filter for telecom providers only
+            billers = response.data.data.filter(biller => {
               const name = (biller.name || biller.biller_name || '').toLowerCase();
-              const category = (biller.category || '').toLowerCase();
               return name.includes('mtn') || name.includes('airtel') || 
                      name.includes('glo') || name.includes('9mobile') ||
-                     category.includes('airtime') || category.includes('data');
+                     name.includes('etisalat') || name.includes('visafone') ||
+                     name.includes('smile') || name.includes('ntel');
             });
-            usedEndpoint = `/billers (filtered)`;
-            console.log('✅ Method 3 successful:', usedEndpoint);
+            usedEndpoint = `/billers (telecom filtered)`;
+            console.log('✅ Telecom filtering successful:', usedEndpoint);
           }
-        } catch (error3) {
-          console.log('⚠️ Method 3 failed:', error3.response?.status, error3.response?.data?.message);
+        } catch (error) {
+          console.log('⚠️ Telecom filtering failed:', error.response?.status, error.response?.data?.message);
+        }
+      } else {
+        // For other categories, try the original methods
+        // Method 1: Try /v3/bill-categories/{id}/billers
+        try {
+          const response1 = await axios.get(
+            `${this.baseURL}/bill-categories/${categoryCode}/billers`,
+            { headers: this.headers }
+          );
+          
+          if (response1.data.data && response1.data.data.length > 0) {
+            billers = response1.data.data;
+            usedEndpoint = `/bill-categories/${categoryCode}/billers`;
+            console.log('✅ Method 1 successful:', usedEndpoint);
+          }
+        } catch (error1) {
+          console.log('⚠️ Method 1 failed:', error1.response?.status, error1.response?.data?.message);
+        }
+
+        // Method 2: Fallback to /v3/billers with category filter
+        if (billers.length === 0) {
+          try {
+            const response2 = await axios.get(
+              `${this.baseURL}/billers`,
+              { 
+                headers: this.headers,
+                params: { category: categoryCode }
+              }
+            );
+            
+            if (response2.data.data && response2.data.data.length > 0) {
+              billers = response2.data.data;
+              usedEndpoint = `/billers?category=${categoryCode}`;
+              console.log('✅ Method 2 successful:', usedEndpoint);
+            }
+          } catch (error2) {
+            console.log('⚠️ Method 2 failed:', error2.response?.status, error2.response?.data?.message);
+          }
         }
       }
 

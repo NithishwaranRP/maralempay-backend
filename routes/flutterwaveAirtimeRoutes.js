@@ -11,6 +11,12 @@ router.get('/categories', (req, res) => {
   flutterwaveController.getBillCategories(req, res);
 });
 
+// GET /api/flutterwave/billers
+// Fetch all billers (for fallback)
+router.get('/billers', (req, res) => {
+  flutterwaveController.getAllBillers(req, res);
+});
+
 // GET /api/flutterwave/billers/:categoryCode
 // Fetch billers for a specific category
 router.get('/billers/:categoryCode', (req, res) => {
