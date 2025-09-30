@@ -99,7 +99,7 @@ const verifyPayment = async (req, res) => {
     
     // Step 4: Check if this is a subscription payment
     const paymentAmount = parseFloat(paymentData.amount);
-    const subscriptionAmount = parseFloat(process.env.SUBSCRIPTION_AMOUNT || 100);
+    const subscriptionAmount = parseFloat(process.env.SUBSCRIPTION_AMOUNT || 750);
     
     if (Math.abs(paymentAmount - subscriptionAmount) < 1) { // Allow for minor differences
       console.log('💳 This is a subscription payment, activating subscription...');

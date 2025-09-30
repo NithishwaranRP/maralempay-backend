@@ -59,7 +59,7 @@ async function testSubscriptionUpdate() {
       // Update existing subscription
       subscription.status = 'active';
       subscription.paymentStatus = 'paid';
-      subscription.amount = 100;
+      subscription.amount = 750;
       subscription.startDate = new Date();
       subscription.endDate = subscriptionExpiry;
       subscription.paymentReference = 'TEST_SUB_' + Date.now();
@@ -72,7 +72,7 @@ async function testSubscriptionUpdate() {
       subscription = new Subscription({
         user: user._id,
         planType: '6_months',
-        amount: 100,
+        amount: 750,
         duration: 6,
         durationUnit: 'months',
         startDate: new Date(),

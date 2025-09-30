@@ -329,7 +329,7 @@ const updateProfile = async (req, res) => {
 const initializeSubscription = async (req, res) => {
   try {
     const user = req.user;
-    const subscriptionAmount = parseFloat(process.env.SUBSCRIPTION_AMOUNT) || 100;
+    const subscriptionAmount = parseFloat(process.env.SUBSCRIPTION_AMOUNT) || 750;
 
     // Check if user is already subscribed
     if (user.isSubscribed && user.subscriptionExpiry > new Date()) {
@@ -400,7 +400,7 @@ const verifySubscription = async (req, res) => {
       console.log('Processing mock payment for transaction:', transactionId);
       paymentData = {
         status: 'successful',
-        amount: 100,
+        amount: 750,
         flw_ref: `MOCK_REF_${Date.now()}`,
         tx_ref: `MOCK_TX_${Date.now()}`
       };
@@ -449,7 +449,7 @@ const verifySubscription = async (req, res) => {
     if (user.referredBy) {
       const referrer = await User.findById(user.referredBy);
       if (referrer) {
-        const referralReward = process.env.REFERRAL_REWARD || 500;
+        const referralReward = process.env.REFERRAL_REWARD || 50;
         
         // Update referrer's wallet balance
         await User.findByIdAndUpdate(user.referredBy, {

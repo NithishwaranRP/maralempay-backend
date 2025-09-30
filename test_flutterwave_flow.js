@@ -64,7 +64,7 @@ class FlutterwaveFlowTester {
     
     const paymentData = {
       tx_ref: `SUB_TEST_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      amount: 100,
+      amount: 750,
       currency: 'NGN',
       redirect_url: 'https://maralempay.com/subscription/callback?status=successful',
       customer: {
