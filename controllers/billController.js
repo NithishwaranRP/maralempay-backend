@@ -22,7 +22,7 @@ class BillController {
    * 1. Fetches specific products/items for a given Biller (e.g., MTN Data Bundles)
    * Endpoint: GET /api/bills/products/:biller_id
    */
-  async getBillerProducts(req, res) {
+  getBillerProducts = async (req, res) => {
     const { biller_id } = req.params;
 
     if (!biller_id) {
@@ -80,7 +80,7 @@ class BillController {
    * 2. Processes the payment for a bill item (Airtime or Data)
    * Endpoint: POST /api/bills/pay
    */
-  async processBillPayment(req, res) {
+  processBillPayment = async (req, res) => {
     const { 
       biller_id, 
       item_code, 
@@ -210,7 +210,7 @@ class BillController {
    * 3. Get biller details
    * Endpoint: GET /api/bills/billers/:biller_id
    */
-  async getBillerDetails(req, res) {
+  getBillerDetails = async (req, res) => {
     const { biller_id } = req.params;
 
     if (!biller_id) {
@@ -268,7 +268,7 @@ class BillController {
    * 4. Get billers by category
    * Endpoint: GET /api/bills/billers/category/:category
    */
-  async getBillersByCategory(req, res) {
+  getBillersByCategory = async (req, res) => {
     const { category } = req.params;
 
     if (!category) {
