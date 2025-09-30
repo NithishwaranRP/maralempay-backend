@@ -88,6 +88,7 @@ app.use('/api/payment', require('./routes/paymentVerificationRoutes'));
 app.use('/api/maralem-bills', require('./routes/maralemBillsRoutes'));
 app.use('/api/flutterwave', require('./routes/flutterwaveAirtimeRoutes'));
 app.use('/api/bill-payments', require('./routes/billRoutes'));
+app.use('/api/flutterwave-direct', require('./routes/flutterwaveDirectRoutes'));
 
 // Root endpoint
 app.get('/', (req, res) => {
