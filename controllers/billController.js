@@ -2,27 +2,25 @@ const axios = require('axios');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 
-class BillController {
-  constructor() {
-    this.baseURL = 'https://api.flutterwave.com/v3';
-    this.secretKey = process.env.FLW_SECRET_KEY;
-    this.publicKey = process.env.FLW_PUBLIC_KEY;
-    
-    if (!this.secretKey) {
-      throw new Error('FLW_SECRET_KEY environment variable is required');
-    }
-    
-    this.headers = {
-      'Authorization': `Bearer ${this.secretKey}`,
-      'Content-Type': 'application/json'
-    };
-  }
+// Flutterwave API configuration
+const baseURL = 'https://api.flutterwave.com/v3';
+const secretKey = process.env.FLW_SECRET_KEY;
+const publicKey = process.env.FLW_PUBLIC_KEY;
+
+if (!secretKey) {
+  throw new Error('FLW_SECRET_KEY environment variable is required');
+}
+
+const headers = {
+  'Authorization': `Bearer ${secretKey}`,
+  'Content-Type': 'application/json'
+};
 
   /**
    * 1. Fetches specific products/items for a given Biller (e.g., MTN Data Bundles)
    * Endpoint: GET /api/bills/products/:biller_id
    */
-  getBillerProducts = async (req, res) => {
+const getBillerProducts = async (req, res) => {
     const { biller_id } = req.params;
 
     if (!biller_id) {
@@ -37,8 +35,8 @@ class BillController {
 
       // Call Flutterwave API to get biller items/products
       const response = await axios.get(
-        `${this.baseURL}/billers/${biller_id}/items`,
-        { headers: this.headers }
+        `${baseURL}/billers/${biller_id}/items`,
+        { headers: headers }
       );
 
       console.log('✅ Biller products fetched successfully:', {
@@ -80,7 +78,7 @@ class BillController {
    * 2. Processes the payment for a bill item (Airtime or Data)
    * Endpoint: POST /api/bills/pay
    */
-  processBillPayment = async (req, res) => {
+const processBillPayment = async (req, res) => {
     const { 
       biller_id, 
       item_code, 
@@ -154,9 +152,9 @@ class BillController {
 
       console.log('🔗 Calling Flutterwave bill payment API...');
       const paymentResponse = await axios.post(
-        `${this.baseURL}/bills`,
+        `${baseURL}/bills`,
         paymentPayload,
-        { headers: this.headers }
+        { headers: headers }
       );
 
       console.log('✅ Flutterwave bill payment response:', {
@@ -210,7 +208,7 @@ class BillController {
    * 3. Get biller details
    * Endpoint: GET /api/bills/billers/:biller_id
    */
-  getBillerDetails = async (req, res) => {
+const getBillerDetails = async (req, res) => {
     const { biller_id } = req.params;
 
     if (!biller_id) {
@@ -225,8 +223,8 @@ class BillController {
 
       // Get all billers and find the specific one
       const response = await axios.get(
-        `${this.baseURL}/billers`,
-        { headers: this.headers }
+        `${baseURL}/billers`,
+        { headers: headers }
       );
 
       const biller = response.data.data?.find(b => 
@@ -268,7 +266,7 @@ class BillController {
    * 4. Get billers by category
    * Endpoint: GET /api/bills/billers/category/:category
    */
-  getBillersByCategory = async (req, res) => {
+const getBillersByCategory = async (req, res) => {
     const { category } = req.params;
 
     if (!category) {
@@ -283,8 +281,8 @@ class BillController {
 
       // Get all billers and filter by category
       const response = await axios.get(
-        `${this.baseURL}/billers`,
-        { headers: this.headers }
+        `${baseURL}/billers`,
+        { headers: headers }
       );
 
       let billers = response.data.data || [];
@@ -334,4 +332,9 @@ class BillController {
   }
 }
 
-module.exports = new BillController();
+module.exports = {
+  getBillerProducts,
+  processBillPayment,
+  getBillerDetails,
+  getBillersByCategory
+};
