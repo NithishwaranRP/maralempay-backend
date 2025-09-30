@@ -330,7 +330,6 @@ const getBillersByCategory = async (req, res) => {
       });
     }
   }
-}
 
 module.exports = {
   getBillerProducts,
