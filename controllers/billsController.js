@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const WalletTransaction = require('../models/WalletTransaction');
-const Subscription = require('../models/Subscription');
+// Removed Subscription model - now using wallet-based discount system
 const { FlutterwaveService } = require('../utils/flutterwave');
 
 const flutterwaveService = new FlutterwaveService();
@@ -950,130 +950,6 @@ const createAirtimePurchase = async (req, res) => {
         amount,
         network,
         message: 'Our airtime services are currently being updated. No charges will be made to your account. Please check back later.'
-      }
-    });
-    
-    console.log('🔍 Creating airtime purchase:', {
-      phone_number,
-      amount,
-      network,
-      user_id: user._id
-    });
-    
-    // Check if user has minimum wallet balance for discount (N1,000)
-    const minimumBalanceForDiscount = 1000;
-    const hasMinimumBalance = user.walletBalance >= minimumBalanceForDiscount;
-    
-    // Calculate discounted amount (10% off if wallet balance >= N1,000)
-    const discountPercentage = hasMinimumBalance ? 10 : 0;
-    const discountAmount = (amount * discountPercentage) / 100;
-    const discountedAmount = amount - discountAmount;
-    
-    console.log('💰 Wallet-based discount calculation:', {
-      originalAmount: amount,
-      walletBalance: user.walletBalance,
-      minimumBalanceForDiscount,
-      hasMinimumBalance,
-      discountPercentage,
-      discountAmount,
-      discountedAmount
-    });
-    
-    // Generate unique transaction reference
-    const txRef = `AIRTIME_${user._id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Map network to biller ID (using actual Flutterwave biller IDs)
-    const billerCodes = {
-      'MTN': '1',        // MTN VTU
-      'AIRTEL': '17147', // AIRTEL VTU
-      'GLO': '17148',    // GLO VTU
-      '9MOBILE': '17149' // 9MOBILE VTU
-    };
-    
-    const billerCode = billerCodes[network.toUpperCase()] || 'BIL108';
-    
-    // Create payment session with Flutterwave
-    const paymentData = {
-      tx_ref: txRef,
-      amount: discountedAmount,
-      currency: 'NGN',
-      redirect_url: `${process.env.FRONTEND_URL || 'https://maralempay.com'}/payment/callback?status=successful`,
-      payment_options: 'card,ussd',
-      customer: {
-        email: user.email,
-        phone_number: phone_number,
-        name: `${user.firstName} ${user.lastName}`
-      },
-      customizations: {
-        title: 'MaralemPay Airtime Purchase',
-        description: `${network} Airtime - ₦${amount}`,
-        logo: 'https://maralempay.com/logo.png'
-      },
-      meta: {
-        biller_code: billerCode,
-        variation_code: 'AT099',
-        original_amount: amount,
-        discount_amount: discountAmount,
-        discounted_amount: discountedAmount,
-        user_id: user._id,
-        payment_type: 'airtime_purchase',
-        network: network
-      }
-    };
-    
-    // Initialize payment with Flutterwave
-    const paymentResult = await flutterwaveService.initializePayment(paymentData);
-    
-    if (!paymentResult.success) {
-      return res.status(400).json({
-        success: false,
-        message: paymentResult.message
-      });
-    }
-    
-    // Save transaction record
-    const transaction = new Transaction({
-      user: user._id,
-      type: 'airtime_purchase',
-      amount: discountedAmount,
-      originalAmount: amount,
-      discountAmount: discountAmount,
-      status: 'pending',
-      txRef: txRef,
-      flwRef: paymentResult.data.flw_ref,
-      billerCode: billerCode,
-      variationCode: 'AT099',
-      phoneNumber: phone_number,
-      planName: `${network} Airtime - ₦${amount}`,
-      paymentLink: paymentResult.data.link,
-      metadata: {
-        biller_code: billerCode,
-        variation_code: 'AT099',
-        original_amount: amount,
-        discount_amount: discountAmount,
-        discounted_amount: discountedAmount,
-        has_subscription: hasActiveSubscription,
-        discount_percentage: discountPercentage,
-        subscription_id: activeSubscription?._id,
-        network: network
-      }
-    });
-    
-    await transaction.save();
-    
-    res.json({
-      success: true,
-      message: 'Airtime purchase session created successfully',
-      data: {
-        payment_link: paymentResult.data.link,
-        tx_ref: txRef,
-        amount: discountedAmount,
-        original_amount: amount,
-        discount_amount: discountAmount,
-        discount_percentage: discountPercentage,
-        transaction_id: transaction._id,
-        network: network,
-        phone_number: phone_number
       }
     });
   } catch (error) {
