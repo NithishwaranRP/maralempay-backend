@@ -1,4 +1,4 @@
-const UserUserTransaction = require('../models/UserUserTransaction');
+const UserTransaction = require('../models/UserTransaction');
 const User = require('../models/User');
 const { FlutterwaveService, DATA_PLANS } = require('../utils/flutterwave');
 
@@ -43,7 +43,7 @@ const buyAirtime = async (req, res) => {
     }
 
     // Create transaction record
-    const transaction = new UserUserTransaction({
+    const transaction = new UserTransaction({
       user: user._id,
       type: 'airtime',
       amount: pricing.finalAmount,
