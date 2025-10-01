@@ -25,13 +25,8 @@ const TELECOM_PROVIDERS = {
   'SMILE': 'BIL124'
 };
 
-// Airtime provider biller codes (different from data codes)
-const AIRTIME_PROVIDERS = {
-  'MTN': 'BIL099',    // MTN Airtime
-  'AIRTEL': 'BIL100', // Airtel Airtime
-  'GLO': 'BIL101',    // Glo Airtime
-  '9MOBILE': 'BIL102' // 9Mobile Airtime
-};
+// Generic airtime biller code (handles all carriers)
+const AIRTIME_BILLER_CODE = 'BIL099';
 
 /**
  * Get data bundles for a specific biller using Flutterwave bill-categories API
@@ -243,7 +238,7 @@ const getTelecomProviders = async (req, res) => {
   try {
     console.log('🔍 Fetching telecom providers...');
 
-    // Return predefined telecom providers (both data and airtime)
+    // Return predefined telecom providers (data providers + generic airtime)
     const dataProviders = Object.entries(TELECOM_PROVIDERS).map(([name, code]) => ({
       name: name,
       biller_code: code,
@@ -251,14 +246,15 @@ const getTelecomProviders = async (req, res) => {
       type: 'data'
     }));
     
-    const airtimeProviders = Object.entries(AIRTIME_PROVIDERS).map(([name, code]) => ({
-      name: name,
-      biller_code: code,
-      display_name: name === '9MOBILE' ? '9mobile' : name,
+    // Add generic airtime provider
+    const airtimeProvider = {
+      name: 'AIRTIME',
+      biller_code: AIRTIME_BILLER_CODE,
+      display_name: 'Airtime (All Networks)',
       type: 'airtime'
-    }));
+    };
     
-    const providers = [...dataProviders, ...airtimeProviders];
+    const providers = [...dataProviders, airtimeProvider];
 
     console.log('✅ Telecom providers fetched successfully:', {
       providersCount: providers.length
