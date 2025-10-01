@@ -3,9 +3,9 @@ const router = express.Router();
 const {
   buyAirtime,
   buyData,
-  getTransactionHistory,
+  getUserTransactionHistory,
   getDataPlans,
-  getTransactionStats
+  getUserTransactionStats
 } = require('../controllers/transactionController');
 const {
   validateAirtimePurchase,
@@ -22,7 +22,7 @@ router.get('/data-plans', getDataPlans);
 // Routes that check discount eligibility but allow full-price purchases
 router.post('/airtime', checkDiscountEligibility, validateAirtimePurchase, buyAirtime);
 router.post('/data', checkDiscountEligibility, validateDataPurchase, buyData);
-router.get('/history', getTransactionHistory);
-router.get('/stats', getTransactionStats);
+router.get('/history', getUserTransactionHistory);
+router.get('/stats', getUserTransactionStats);
 
 module.exports = router;
