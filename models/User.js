@@ -61,6 +61,14 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  lockedBalance: {
+    type: Number,
+    default: 0
+  },
+  isLockedBalanceEnabled: {
+    type: Boolean,
+    default: true
+  },
   referralCode: {
     type: String,
     unique: true,
@@ -88,11 +96,17 @@ userSchema.virtual('fullName').get(function() {
   return `${this.firstName} ${this.lastName}`;
 });
 
-// Pre-save middleware to set name if not provided
+// Pre-save middleware to set name if not provided and update locked balance
 userSchema.pre('save', function(next) {
   if (!this.name && this.firstName && this.lastName) {
     this.name = `${this.firstName} ${this.lastName}`;
   }
+  
+  // Update locked balance if wallet balance has changed
+  if (this.isModified('walletBalance')) {
+    this.updateLockedBalance();
+  }
+  
   this.updatedAt = new Date();
   next();
 });
@@ -100,6 +114,106 @@ userSchema.pre('save', function(next) {
 // Method to check if user qualifies for discount (minimum N1,000 balance)
 userSchema.methods.qualifiesForDiscount = function() {
   return this.walletBalance >= 1000;
+};
+
+// Method to get available balance (total - locked)
+userSchema.methods.getAvailableBalance = function() {
+  if (!this.isLockedBalanceEnabled) {
+    return this.walletBalance;
+  }
+  return Math.max(0, this.walletBalance - this.lockedBalance);
+};
+
+// Method to get locked balance amount
+userSchema.methods.getLockedBalance = function() {
+  if (!this.isLockedBalanceEnabled) {
+    return 0;
+  }
+  return Math.min(this.lockedBalance, this.walletBalance);
+};
+
+// Method to check if user can spend amount (considering locked balance)
+userSchema.methods.canSpend = function(amount) {
+  return this.getAvailableBalance() >= amount;
+};
+
+// Method to update locked balance when wallet balance changes
+userSchema.methods.updateLockedBalance = function() {
+  if (!this.isLockedBalanceEnabled) {
+    this.lockedBalance = 0;
+    return;
+  }
+  
+  // Lock minimum N1,000 if wallet balance is >= 1000
+  if (this.walletBalance >= 1000) {
+    this.lockedBalance = Math.min(1000, this.walletBalance);
+  } else {
+    this.lockedBalance = 0;
+  }
+};
+
+// Static method to process referral reward when user funds wallet
+userSchema.statics.processReferralReward = async function(userId, fundingAmount) {
+  try {
+    const user = await this.findById(userId);
+    if (!user || !user.referredBy) {
+      return null; // No referral or user not found
+    }
+
+    const referrer = await this.findById(user.referredBy);
+    if (!referrer) {
+      return null; // Referrer not found
+    }
+
+    // Check if this is the first wallet funding for the referred user
+    const existingFunding = await WalletTransaction.findOne({
+      user: userId,
+      type: 'funding',
+      status: 'completed'
+    });
+
+    // Only give reward on first successful funding
+    if (existingFunding) {
+      return null; // Already received reward for this user
+    }
+
+    const rewardAmount = 50; // ₦50 reward
+
+    // Add reward to referrer's wallet
+    referrer.walletBalance += rewardAmount;
+    referrer.referralRewards += rewardAmount;
+    await referrer.save();
+
+    // Create referral reward transaction
+    const WalletTransaction = require('./WalletTransaction');
+    const referralTransaction = new WalletTransaction({
+      user: referrer._id,
+      type: 'referral_reward',
+      amount: rewardAmount,
+      balanceAfter: referrer.walletBalance,
+      description: `Referral reward for ${user.firstName} ${user.lastName}`,
+      category: 'referral',
+      status: 'completed',
+      metadata: {
+        referredUserId: userId,
+        referredUserName: `${user.firstName} ${user.lastName}`,
+        fundingAmount: fundingAmount
+      }
+    });
+
+    await referralTransaction.save();
+
+    console.log(`🎉 Referral reward processed: ${referrer.email} received ₦${rewardAmount} for referring ${user.email}`);
+
+    return {
+      referrer: referrer,
+      rewardAmount: rewardAmount,
+      transaction: referralTransaction
+    };
+  } catch (error) {
+    console.error('❌ Error processing referral reward:', error);
+    return null;
+  }
 };
 
 // Static method to find users with minimum balance for discounts
@@ -158,6 +272,9 @@ userSchema.methods.getPublicProfile = function() {
     totalReferrals: this.totalReferrals,
     referralRewards: this.referralRewards,
     walletBalance: this.walletBalance,
+    availableBalance: this.getAvailableBalance(),
+    lockedBalance: this.getLockedBalance(),
+    isLockedBalanceEnabled: this.isLockedBalanceEnabled,
     qualifiesForDiscount: this.qualifiesForDiscount(),
     referralCode: this.referralCode,
     createdAt: this.createdAt,

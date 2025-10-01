@@ -21,6 +21,9 @@ const getWalletInfo = async (req, res) => {
       success: true,
       data: {
         balance: user.walletBalance,
+        availableBalance: user.getAvailableBalance(),
+        lockedBalance: user.getLockedBalance(),
+        isLockedBalanceEnabled: user.isLockedBalanceEnabled,
         recentTransactions: recentTransactions.map(tx => ({
           id: tx._id,
           type: tx.type,
