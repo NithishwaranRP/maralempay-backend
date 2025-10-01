@@ -94,19 +94,23 @@ router.post('/calculate-discount', async (req, res) => {
       });
     }
     
-    // Check if user is an active subscriber
-    const isActiveSubscriber = user.isActiveSubscriber();
+    // Check if user has minimum wallet balance for discounts (N1,000)
+    const minimumBalance = 1000;
+    const hasMinimumBalance = user.walletBalance >= minimumBalance;
     
-    if (!isActiveSubscriber) {
+    if (!hasMinimumBalance) {
       return res.status(403).json({
         success: false,
-        message: 'Active subscription required for discounted services',
+        message: `Minimum wallet balance of ₦${minimumBalance} required for discounted services`,
         data: {
           original_amount: amount,
           discounted_amount: amount,
           discount_amount: 0,
           discount_percentage: 0,
-          is_subscriber: false
+          qualifies_for_discount: false,
+          current_balance: user.walletBalance,
+          minimum_required: minimumBalance,
+          shortfall: minimumBalance - user.walletBalance
         }
       });
     }
@@ -122,7 +126,9 @@ router.post('/calculate-discount', async (req, res) => {
         discounted_amount: discountedAmount,
         discount_amount: subsidyAmount,
         discount_percentage: DISCOUNT_RATE * 100,
-        is_subscriber: true,
+        qualifies_for_discount: true,
+        current_balance: user.walletBalance,
+        minimum_required: minimumBalance,
         savings: subsidyAmount
       }
     });
@@ -194,17 +200,23 @@ router.post('/purchase', async (req, res) => {
       });
     }
     
-    // 4. Check subscription status
-    if (!user.isActiveSubscriber()) {
+    // 4. Check wallet balance for discount eligibility
+    const minimumBalance = 1000;
+    const hasMinimumBalance = user.walletBalance >= minimumBalance;
+    
+    if (!hasMinimumBalance) {
       return res.status(403).json({
         success: false,
-        message: 'Active subscription required for discounted services',
+        message: `Minimum wallet balance of ₦${minimumBalance} required for discounted services`,
         data: {
           original_amount: amount,
           discounted_amount: amount,
           discount_amount: 0,
           discount_percentage: 0,
-          is_subscriber: false
+          qualifies_for_discount: false,
+          current_balance: user.walletBalance,
+          minimum_required: minimumBalance,
+          shortfall: minimumBalance - user.walletBalance
         }
       });
     }

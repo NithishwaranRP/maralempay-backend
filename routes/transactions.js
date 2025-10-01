@@ -11,7 +11,7 @@ const {
   validateAirtimePurchase,
   validateDataPurchase
 } = require('../middleware/validation');
-const { authenticateUser, requireSubscription } = require('../middleware/auth');
+const { authenticateUser, requireMinimumBalance } = require('../middleware/auth');
 
 // All routes require authentication
 router.use(authenticateUser);
@@ -19,8 +19,8 @@ router.use(authenticateUser);
 // Public data plans endpoint (no subscription required)
 router.get('/data-plans', getDataPlans);
 
-// Subscription required routes
-router.use(requireSubscription);
+// Minimum wallet balance required routes (for discounts)
+router.use(requireMinimumBalance);
 
 router.post('/airtime', validateAirtimePurchase, buyAirtime);
 router.post('/data', validateDataPurchase, buyData);
