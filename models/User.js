@@ -37,21 +37,7 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  isSubscriber: {
-    type: Boolean,
-    default: false
-  },
-  subscriptionStatus: {
-    type: String,
-    enum: ['active', 'inactive', 'expired', 'cancelled'],
-    default: 'inactive'
-  },
-  subscriptionDate: {
-    type: Date
-  },
-  subscriptionExpiry: {
-    type: Date
-  },
+  // Removed subscription fields - now using wallet-based discount system
   isActive: {
     type: Boolean,
     default: true
@@ -95,8 +81,7 @@ const userSchema = new mongoose.Schema({
 // Indexes for better query performance
 userSchema.index({ email: 1 });
 userSchema.index({ phone: 1 });
-userSchema.index({ isSubscriber: 1 });
-userSchema.index({ subscriptionStatus: 1 });
+userSchema.index({ walletBalance: 1 });
 
 // Virtual for full name
 userSchema.virtual('fullName').get(function() {
@@ -112,22 +97,15 @@ userSchema.pre('save', function(next) {
   next();
 });
 
-// Method to check if user is an active subscriber
-userSchema.methods.isActiveSubscriber = function() {
-  return this.isSubscriber && 
-         this.subscriptionStatus === 'active' && 
-         (!this.subscriptionExpiry || this.subscriptionExpiry > new Date());
+// Method to check if user qualifies for discount (minimum N1,000 balance)
+userSchema.methods.qualifiesForDiscount = function() {
+  return this.walletBalance >= 1000;
 };
 
-// Static method to find active subscribers
-userSchema.statics.findActiveSubscribers = function() {
+// Static method to find users with minimum balance for discounts
+userSchema.statics.findDiscountEligibleUsers = function() {
   return this.find({
-    isSubscriber: true,
-    subscriptionStatus: 'active',
-    $or: [
-      { subscriptionExpiry: { $exists: false } },
-      { subscriptionExpiry: { $gt: new Date() } }
-    ]
+    walletBalance: { $gte: 1000 }
   });
 };
 
@@ -175,15 +153,12 @@ userSchema.methods.getPublicProfile = function() {
     name: this.name,
     phone: this.phone,
     isEmailVerified: this.isEmailVerified,
-    isSubscriber: this.isSubscriber,
-    subscriptionStatus: this.subscriptionStatus,
-    subscriptionDate: this.subscriptionDate,
-    subscriptionExpiry: this.subscriptionExpiry,
     isActive: this.isActive,
     lastLogin: this.lastLogin,
     totalReferrals: this.totalReferrals,
     referralRewards: this.referralRewards,
     walletBalance: this.walletBalance,
+    qualifiesForDiscount: this.qualifiesForDiscount(),
     referralCode: this.referralCode,
     createdAt: this.createdAt,
     updatedAt: this.updatedAt

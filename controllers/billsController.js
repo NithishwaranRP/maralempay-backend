@@ -194,61 +194,82 @@ const createBillPayment = async (req, res) => {
       }
     });
     
-    // Check if user has active subscription for discount
-    const activeSubscription = await Subscription.getActiveSubscription(user._id);
-    const hasActiveSubscription = !!activeSubscription;
+    // Check if user has minimum wallet balance for discount (N1,000)
+    const minimumBalanceForDiscount = 1000;
+    const hasMinimumBalance = user.walletBalance >= minimumBalanceForDiscount;
     
-    // Calculate discounted amount (10% off if subscription exists)
-    const discountPercentage = hasActiveSubscription ? (activeSubscription.discountPercentage || 10) : 0;
+    // Calculate discounted amount (10% off if wallet balance >= N1,000)
+    const discountPercentage = hasMinimumBalance ? 10 : 0;
     const discountAmount = (amount * discountPercentage) / 100;
     const discountedAmount = amount - discountAmount;
     
-    console.log('💰 Discount calculation:', {
+    console.log('💰 Wallet-based discount calculation:', {
       originalAmount: amount,
+      walletBalance: user.walletBalance,
+      minimumBalanceForDiscount,
+      hasMinimumBalance,
       discountPercentage,
       discountAmount,
-      discountedAmount,
-      hasActiveSubscription
+      discountedAmount
     });
     
     // Generate unique transaction reference
     const txRef = `BILL_${user._id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // Create payment session with Flutterwave
-    const paymentData = {
-      tx_ref: txRef,
-      amount: discountedAmount,
-      currency: 'NGN',
-      redirect_url: `${process.env.FRONTEND_URL || 'https://maralempay.com'}/payment/callback?status=successful`,
-      payment_options: 'card,ussd',
-      customer: {
-        email: user.email,
-        phone_number: phone_number,
-        name: customer_name || `${user.firstName} ${user.lastName}`
-      },
-      customizations: {
-        title: 'MaralemPay Bill Payment',
-        description: plan_name || `Payment for ${biller_code} - ${variation_code}`,
-        logo: 'https://maralempay.com/logo.png'
-      },
-      meta: {
-        biller_code: biller_code,
-        variation_code: variation_code,
-        original_amount: amount,
-        discount_amount: discountAmount,
-        discounted_amount: discountedAmount,
-        user_id: user._id,
-        payment_type: 'bill_payment'
-      }
-    };
-    
-    // Initialize payment with Flutterwave
-    const paymentResult = await flutterwaveService.initializePayment(paymentData);
-    
-    if (!paymentResult.success) {
+    // Check if user has sufficient wallet balance
+    if (user.walletBalance < discountedAmount) {
       return res.status(400).json({
         success: false,
-        message: paymentResult.message
+        message: `Insufficient wallet balance. Required: ₦${discountedAmount}, Available: ₦${user.walletBalance}`,
+        data: {
+          required_amount: discountedAmount,
+          available_balance: user.walletBalance,
+          shortfall: discountedAmount - user.walletBalance
+        }
+      });
+    }
+    
+    // Process wallet payment directly
+    try {
+      // Deduct amount from user's wallet
+      user.walletBalance -= discountedAmount;
+      await user.save();
+      
+      // Create wallet transaction record
+      const walletTransaction = new WalletTransaction({
+        user: user._id,
+        type: 'debit',
+        amount: discountedAmount,
+        balanceBefore: user.walletBalance + discountedAmount,
+        balanceAfter: user.walletBalance,
+        description: `Bill payment: ${plan_name || `${biller_code} - ${variation_code}`}`,
+        reference: txRef,
+        metadata: {
+          biller_code: biller_code,
+          variation_code: variation_code,
+          original_amount: amount,
+          discount_amount: discountAmount,
+          discounted_amount: discountedAmount,
+          has_minimum_balance: hasMinimumBalance,
+          discount_percentage: discountPercentage
+        }
+      });
+      
+      await walletTransaction.save();
+      
+      console.log('✅ Wallet payment processed successfully:', {
+        tx_ref: txRef,
+        amount_deducted: discountedAmount,
+        new_balance: user.walletBalance,
+        user_email: user.email
+      });
+      
+    } catch (walletError) {
+      console.error('❌ Wallet payment failed:', walletError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to process wallet payment',
+        error: walletError.message
       });
     }
     
@@ -259,39 +280,41 @@ const createBillPayment = async (req, res) => {
       amount: discountedAmount,
       originalAmount: amount,
       discountAmount: discountAmount,
-      status: 'pending',
+      status: 'completed', // Wallet payment is immediate
       txRef: txRef,
-      flwRef: paymentResult.data.flw_ref,
+      flwRef: null, // No Flutterwave reference for wallet payments
       billerCode: biller_code,
       variationCode: variation_code,
       phoneNumber: phone_number,
       planName: plan_name,
-      paymentLink: paymentResult.data.link,
+      paymentLink: null, // No payment link needed for wallet payments
+      paymentMethod: 'wallet',
       metadata: {
         biller_code: biller_code,
         variation_code: variation_code,
         original_amount: amount,
         discount_amount: discountAmount,
         discounted_amount: discountedAmount,
-        has_subscription: hasActiveSubscription,
+        has_minimum_balance: hasMinimumBalance,
         discount_percentage: discountPercentage,
-        subscription_id: activeSubscription?._id
+        payment_method: 'wallet',
+        wallet_balance_after: user.walletBalance
       }
     });
     
     await transaction.save();
     
-    console.log('✅ Debug: Payment session created successfully:', {
+    console.log('✅ Debug: Wallet payment completed successfully:', {
       tx_ref: txRef,
       amount: discountedAmount,
-      user_email: user.email
+      user_email: user.email,
+      new_wallet_balance: user.walletBalance
     });
     
     res.json({
       success: true,
-      message: 'Payment session created successfully',
+      message: 'Payment completed successfully via wallet',
       data: {
-        payment_link: paymentResult.data.link,
         tx_ref: txRef,
         amount: discountedAmount,
         original_amount: amount,
@@ -299,7 +322,10 @@ const createBillPayment = async (req, res) => {
         discount_percentage: discountPercentage,
         transaction_id: transaction._id,
         phone_number: phone_number,
-        plan_name: plan_name
+        plan_name: plan_name,
+        payment_method: 'wallet',
+        wallet_balance_after: user.walletBalance,
+        has_minimum_balance: hasMinimumBalance
       }
     });
   } catch (error) {
@@ -934,21 +960,23 @@ const createAirtimePurchase = async (req, res) => {
       user_id: user._id
     });
     
-    // Check if user has active subscription for discount
-    const activeSubscription = await Subscription.getActiveSubscription(user._id);
-    const hasActiveSubscription = !!activeSubscription;
+    // Check if user has minimum wallet balance for discount (N1,000)
+    const minimumBalanceForDiscount = 1000;
+    const hasMinimumBalance = user.walletBalance >= minimumBalanceForDiscount;
     
-    // Calculate discounted amount (10% off if subscription exists)
-    const discountPercentage = hasActiveSubscription ? (activeSubscription.discountPercentage || 10) : 0;
+    // Calculate discounted amount (10% off if wallet balance >= N1,000)
+    const discountPercentage = hasMinimumBalance ? 10 : 0;
     const discountAmount = (amount * discountPercentage) / 100;
     const discountedAmount = amount - discountAmount;
     
-    console.log('💰 Discount calculation:', {
+    console.log('💰 Wallet-based discount calculation:', {
       originalAmount: amount,
+      walletBalance: user.walletBalance,
+      minimumBalanceForDiscount,
+      hasMinimumBalance,
       discountPercentage,
       discountAmount,
-      discountedAmount,
-      hasActiveSubscription
+      discountedAmount
     });
     
     // Generate unique transaction reference

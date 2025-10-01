@@ -78,7 +78,7 @@ app.use('/api/email', require('./routes/emailRoutes'));
 app.use('/api/web', require('./routes/webRoutes'));
 app.use('/api/debug', require('./routes/debugRoutes'));
 app.use('/api/wallet', require('./routes/walletRoutes'));
-app.use('/api/subscription', require('./routes/subscriptionRoutes'));
+// Subscription routes removed - now using wallet-based discount system
 app.use('/api/bills', require('./routes/billsRoutes'));
 app.use('/api/payments', require('./routes/paymentRoutes'));
 app.use('/api/webhook', require('./routes/webhookRoutes'));
@@ -104,7 +104,7 @@ app.get('/', (req, res) => {
       admin: '/api/admin',
       transactions: '/api/transactions',
       wallet: '/api/wallet',
-      subscription: '/api/subscription',
+      // subscription: '/api/subscription', // Removed - using wallet-based discounts
       bills: '/api/bills',
       referrals: '/api/referrals',
       maralemBills: '/api/maralem-bills'

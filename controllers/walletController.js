@@ -299,15 +299,18 @@ const processWalletPayment = async (req, res) => {
       network: network
     });
 
-    // Check if user has active subscription
-    const hasActiveSubscription = user.isSubscribed && 
-      user.subscriptionExpiry && 
-      user.subscriptionExpiry > new Date();
-
-    if (!hasActiveSubscription) {
+    // Check if user qualifies for discount (minimum N1,000 balance)
+    const qualifiesForDiscount = user.qualifiesForDiscount();
+    
+    if (!qualifiesForDiscount) {
       return res.status(403).json({
         success: false,
-        message: 'Active subscription required to use wallet payments'
+        message: 'Minimum wallet balance of N1,000 required for discounts',
+        data: {
+          currentBalance: user.walletBalance,
+          requiredBalance: 1000,
+          shortfall: 1000 - user.walletBalance
+        }
       });
     }
 
