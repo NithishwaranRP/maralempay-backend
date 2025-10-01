@@ -1,4 +1,4 @@
-const Transaction = require('../models/Transaction');
+const UserUserTransaction = require('../models/UserUserTransaction');
 const User = require('../models/User');
 const { FlutterwaveService, DATA_PLANS } = require('../utils/flutterwave');
 
@@ -43,7 +43,7 @@ const buyAirtime = async (req, res) => {
     }
 
     // Create transaction record
-    const transaction = new Transaction({
+    const transaction = new UserUserTransaction({
       user: user._id,
       type: 'airtime',
       amount: pricing.finalAmount,
@@ -66,7 +66,7 @@ const buyAirtime = async (req, res) => {
 
     if (!purchaseResult.success) {
       // Update transaction status to failed
-      await Transaction.findByIdAndUpdate(transaction._id, {
+      await UserTransaction.findByIdAndUpdate(transaction._id, {
         status: 'failed',
         errorMessage: purchaseResult.message
       });
@@ -78,9 +78,9 @@ const buyAirtime = async (req, res) => {
     }
 
     // Update transaction with Flutterwave details
-    await Transaction.findByIdAndUpdate(transaction._id, {
+    await UserTransaction.findByIdAndUpdate(transaction._id, {
       status: 'successful',
-      flutterwaveTransactionId: purchaseResult.data.id,
+      flutterwaveUserTransactionId: purchaseResult.data.id,
       flutterwaveReference: purchaseResult.data.reference,
       processedAt: new Date()
     });
@@ -136,7 +136,7 @@ const buyData = async (req, res) => {
     }
 
     // Create transaction record
-    const transaction = new Transaction({
+    const transaction = new UserTransaction({
       user: user._id,
       type: 'data',
       amount: pricing.finalAmount,
@@ -160,7 +160,7 @@ const buyData = async (req, res) => {
 
     if (!purchaseResult.success) {
       // Update transaction status to failed
-      await Transaction.findByIdAndUpdate(transaction._id, {
+      await UserTransaction.findByIdAndUpdate(transaction._id, {
         status: 'failed',
         errorMessage: purchaseResult.message
       });
@@ -172,9 +172,9 @@ const buyData = async (req, res) => {
     }
 
     // Update transaction with Flutterwave details
-    await Transaction.findByIdAndUpdate(transaction._id, {
+    await UserTransaction.findByIdAndUpdate(transaction._id, {
       status: 'successful',
-      flutterwaveTransactionId: purchaseResult.data.id,
+      flutterwaveUserTransactionId: purchaseResult.data.id,
       flutterwaveReference: purchaseResult.data.reference,
       processedAt: new Date()
     });
@@ -199,7 +199,7 @@ const buyData = async (req, res) => {
 };
 
 // Get transaction history
-const getTransactionHistory = async (req, res) => {
+const getUserTransactionHistory = async (req, res) => {
   try {
     const { page = 1, limit = 10, type, status } = req.query;
     const userId = req.user._id;
@@ -213,14 +213,14 @@ const getTransactionHistory = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     // Get transactions with pagination
-    const transactions = await Transaction.find(filter)
+    const transactions = await UserTransaction.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
       .populate('beneficiary', 'name phoneNumber network');
 
     // Get total count for pagination
-    const total = await Transaction.countDocuments(filter);
+    const total = await UserTransaction.countDocuments(filter);
 
     res.json({
       success: true,
@@ -229,7 +229,7 @@ const getTransactionHistory = async (req, res) => {
         pagination: {
           currentPage: parseInt(page),
           totalPages: Math.ceil(total / parseInt(limit)),
-          totalTransactions: total,
+          totalUserTransactions: total,
           hasNextPage: skip + transactions.length < total,
           hasPrevPage: parseInt(page) > 1
         }
@@ -277,26 +277,26 @@ const getDataPlans = async (req, res) => {
 };
 
 // Get transaction statistics
-const getTransactionStats = async (req, res) => {
+const getUserTransactionStats = async (req, res) => {
   try {
     const userId = req.user._id;
 
     // Get transaction statistics
-    const stats = await Transaction.aggregate([
+    const stats = await UserTransaction.aggregate([
       { $match: { user: userId } },
       {
         $group: {
           _id: null,
-          totalTransactions: { $sum: 1 },
+          totalUserTransactions: { $sum: 1 },
           totalSpent: { $sum: '$amount' },
           totalSavings: { $sum: '$discount' },
-          airtimeTransactions: {
+          airtimeUserTransactions: {
             $sum: { $cond: [{ $eq: ['$type', 'airtime'] }, 1, 0] }
           },
-          dataTransactions: {
+          dataUserTransactions: {
             $sum: { $cond: [{ $eq: ['$type', 'data'] }, 1, 0] }
           },
-          successfulTransactions: {
+          successfulUserTransactions: {
             $sum: { $cond: [{ $eq: ['$status', 'successful'] }, 1, 0] }
           }
         }
@@ -304,12 +304,12 @@ const getTransactionStats = async (req, res) => {
     ]);
 
     const result = stats[0] || {
-      totalTransactions: 0,
+      totalUserTransactions: 0,
       totalSpent: 0,
       totalSavings: 0,
-      airtimeTransactions: 0,
-      dataTransactions: 0,
-      successfulTransactions: 0
+      airtimeUserTransactions: 0,
+      dataUserTransactions: 0,
+      successfulUserTransactions: 0
     };
 
     res.json({
@@ -329,7 +329,7 @@ const getTransactionStats = async (req, res) => {
 module.exports = {
   buyAirtime,
   buyData,
-  getTransactionHistory,
+  getUserTransactionHistory,
   getDataPlans,
-  getTransactionStats
+  getUserTransactionStats
 };

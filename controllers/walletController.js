@@ -208,6 +208,24 @@ const verifyWalletFunding = async (req, res) => {
       }
     });
 
+    // Also create a UserTransaction record for transaction history
+    const UserTransaction = require('../models/UserTransaction');
+    const transaction = await UserTransaction.create({
+      user: user._id,
+      type: 'wallet_funding',
+      amount: paymentData.amount,
+      originalAmount: paymentData.amount,
+      discount: 0,
+      discountPercentage: 0,
+      phoneNumber: user.phone || '',
+      network: 'WALLET',
+      status: 'successful',
+      flutterwaveTransactionId: paymentData.flw_ref,
+      flutterwaveReference: transactionId,
+      processedAt: new Date(),
+      description: 'Wallet funding via Flutterwave'
+    });
+
     console.log('Wallet funding completed:', {
       userId: user._id,
       amount: paymentData.amount,
@@ -427,6 +445,25 @@ const processWalletPayment = async (req, res) => {
         walletTransaction.billDetails = billResult.data;
         walletTransaction.completedAt = new Date();
         await walletTransaction.save();
+
+        // Also create a UserTransaction record for transaction history
+        const UserTransaction = require('../models/UserTransaction');
+        const transaction = await UserTransaction.create({
+          user: user._id,
+          type: service,
+          amount: discountedAmount,
+          originalAmount: amount,
+          discount: discountAmount,
+          discountPercentage: discountPercentage,
+          phoneNumber: phoneNumber,
+          network: network,
+          status: 'successful',
+          flutterwaveTransactionId: billResult.data.id || txRef,
+          flutterwaveReference: txRef,
+          processedAt: new Date(),
+          description: `${service} purchase with wallet discount`,
+          billDetails: billResult.data
+        });
         
         console.log('🎉 Wallet payment completed successfully:', {
           txRef: txRef,
