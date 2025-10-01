@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const Transaction = require('../models/Transaction');
 const WalletTransaction = require('../models/WalletTransaction');
-const Subscription = require('../models/Subscription');
+// Removed Subscription model - now using wallet-based discount system
 const User = require('../models/User');
 
 /**
@@ -86,11 +86,11 @@ const handleSuccessfulPayment = async (data) => {
         console.log(`✅ Updated wallet balance for user: ${transaction.userId}`);
       }
       
-      // Update subscription status if it's a subscription payment
-      if (transaction.biller_code === 'SUBSCRIPTION') {
-        await updateUserSubscription(transaction.userId, true);
-        console.log(`✅ Updated subscription status for user: ${transaction.userId}`);
-      }
+      // Subscription payments are no longer supported - using wallet-based discount system
+      // if (transaction.biller_code === 'SUBSCRIPTION') {
+      //   await updateUserSubscription(transaction.userId, true);
+      //   console.log(`✅ Updated subscription status for user: ${transaction.userId}`);
+      // }
       
       console.log(`✅ Transaction ${tx_ref} marked as successful`);
     } else {
@@ -158,23 +158,7 @@ const updateWalletBalance = async (userId, amount) => {
   }
 };
 
-/**
- * Update user subscription status
- */
-const updateUserSubscription = async (userId, isActive) => {
-  try {
-    const user = await User.findById(userId);
-    if (user) {
-      user.hasActiveSubscription = isActive;
-      user.subscriptionExpiry = isActive ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null; // 30 days
-      await user.save();
-      
-      console.log(`✅ Subscription status updated for user: ${userId}`);
-    }
-  } catch (error) {
-    console.error('❌ Error updating subscription status:', error);
-  }
-};
+// Removed updateUserSubscription function - no longer using subscription system
 
 module.exports = {
   handleFlutterwaveWebhook

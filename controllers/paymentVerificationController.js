@@ -1,12 +1,12 @@
 const { FlutterwaveService } = require('../utils/flutterwave');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
-const Subscription = require('../models/Subscription');
+// Removed Subscription model - now using wallet-based discount system
 
 const flutterwaveService = new FlutterwaveService();
 
 /**
- * Verify payment with Flutterwave and update subscription status
+ * Verify payment with Flutterwave (subscription system removed - using wallet-based discounts)
  * POST /api/payment/verify
  * Body: { tx_ref, transaction_id }
  */
@@ -93,121 +93,85 @@ const verifyPayment = async (req, res) => {
     console.log('👤 Authenticated user for payment verification:', {
       user_id: user._id,
       email: user.email,
-      current_subscription_status: user.isSubscriber,
+      current_wallet_balance: user.walletBalance,
       payment_email: customerEmail
     });
     
-    // Step 4: Check if this is a subscription payment
+    // Step 4: Check if this is a wallet funding payment
     const paymentAmount = parseFloat(paymentData.amount);
-    const subscriptionAmount = parseFloat(process.env.SUBSCRIPTION_AMOUNT || 750);
     
-    if (Math.abs(paymentAmount - subscriptionAmount) < 1) { // Allow for minor differences
-      console.log('💳 This is a subscription payment, activating subscription...');
-      
-      // --> 💡 LOG 1: Confirming update attempt <--
-      console.log(`[SUBSCRIPTION FINALIZE] Verified success for User ID: ${user._id}. Attempting DB update.`);
-      console.log(`[SUBSCRIPTION FINALIZE] Payment amount: ${paymentAmount}, Expected: ${subscriptionAmount}`);
-      
-      // Step 5: Activate subscription
-      const subscriptionDuration = parseInt(process.env.SUBSCRIPTION_DURATION || 90); // 90 days
-      const subscriptionExpiry = new Date();
-      subscriptionExpiry.setDate(subscriptionExpiry.getDate() + subscriptionDuration);
+    // Check if this is a wallet funding transaction
+    const transaction = await Transaction.findOne({ tx_ref });
+    if (transaction && transaction.biller_code === 'WALLET_FUNDING') {
+      console.log('💰 This is a wallet funding payment, updating wallet balance...');
       
       try {
-        // Update user subscription status
+        // Update user wallet balance
         const updatedUser = await User.findByIdAndUpdate(user._id, {
-          isSubscriber: true,
-          subscriptionStatus: 'active',
-          subscriptionDate: new Date(),
-          subscriptionExpiry: subscriptionExpiry
+          $inc: { walletBalance: paymentAmount }
         }, { new: true });
 
         if (updatedUser) {
-          // --> ✅ LOG 2: Success Confirmation <--
-          console.log(`[SUBSCRIPTION FINALIZE] Success: User ${user._id} is now subscribed until ${updatedUser.subscriptionExpiry}`);
-          console.log(`[SUBSCRIPTION FINALIZE] User subscription status: isSubscriber=${updatedUser.isSubscriber}, subscriptionStatus=${updatedUser.subscriptionStatus}`);
+          console.log(`✅ Wallet funding successful: User ${user._id} wallet balance updated to ₦${updatedUser.walletBalance}`);
+          
+          // Update transaction status
+          await Transaction.findByIdAndUpdate(transaction._id, {
+            status: 'completed',
+            flw_ref: paymentData.flw_ref,
+            updatedAt: new Date()
+          });
+          
+          console.log('✅ Wallet funding completed successfully:', {
+            user_id: user._id,
+            email: user.email,
+            amount_added: paymentAmount,
+            new_balance: updatedUser.walletBalance
+          });
+          
+          // Return success response
+          return res.json({
+            success: true,
+            message: 'Payment verified and wallet funded successfully',
+            data: {
+              user_id: user._id,
+              email: user.email,
+              amount_added: paymentAmount,
+              new_wallet_balance: updatedUser.walletBalance,
+              payment_amount: paymentAmount,
+              payment_status: paymentData.status,
+              verification_ref: verificationRef,
+              flutterwave_ref: paymentData.flw_ref
+            },
+            verification_result: verificationResult
+          });
         } else {
-          // --> ❌ LOG 3: User Not Found/Update Failed <--
-          console.error(`[SUBSCRIPTION FINALIZE] ERROR: User ${user._id} not found or update failed after successful payment.`);
+          console.error(`❌ Failed to update wallet balance for user: ${user._id}`);
+          return res.status(500).json({
+            success: false,
+            message: 'Failed to update wallet balance'
+          });
         }
-      } catch (dbError) {
-        // --> ❌ LOG 4: Database Error Capture <--
-        console.error(`[SUBSCRIPTION FINALIZE] CRITICAL DB ERROR for user ${user._id}:`, dbError.message || dbError);
-        console.error(`[SUBSCRIPTION FINALIZE] DB Error stack:`, dbError.stack);
-        throw new Error('Database update failed post-verification.');
-      }
-      
-      // Create or update subscription record
-      console.log(`[SUBSCRIPTION FINALIZE] Creating/updating subscription record for user ${user._id}`);
-      const existingSubscription = await Subscription.findOne({ user: user._id });
-      
-      if (existingSubscription) {
-        // Extend existing subscription
-        console.log(`[SUBSCRIPTION FINALIZE] Updating existing subscription ${existingSubscription._id}`);
-        await Subscription.findByIdAndUpdate(existingSubscription._id, {
-          status: 'active',
-          paymentStatus: 'paid', // CRITICAL: Update payment status to 'paid'
-          amount: paymentAmount,
-          startDate: new Date(),
-          endDate: subscriptionExpiry,
-          paymentReference: verificationRef,
-          flutterwaveRef: paymentData.flw_ref
+      } catch (walletError) {
+        console.error('❌ Error updating wallet balance:', walletError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to update wallet balance',
+          error: walletError.message
         });
-        console.log(`[SUBSCRIPTION FINALIZE] Subscription record updated successfully with paymentStatus: 'paid'`);
-      } else {
-        // Create new subscription
-        console.log(`[SUBSCRIPTION FINALIZE] Creating new subscription record`);
-        const newSubscription = await Subscription.create({
-          user: user._id,
-          status: 'active',
-          paymentStatus: 'paid', // CRITICAL: Set payment status to 'paid'
-          amount: paymentAmount,
-          startDate: new Date(),
-          endDate: subscriptionExpiry,
-          paymentReference: verificationRef,
-          flutterwaveRef: paymentData.flw_ref
-        });
-        console.log(`[SUBSCRIPTION FINALIZE] New subscription record created: ${newSubscription._id} with paymentStatus: 'paid'`);
       }
-      
-      console.log('✅ Subscription activated successfully:', {
-        user_id: user._id,
-        email: user.email,
-        expires_at: subscriptionExpiry,
-        amount: paymentAmount
-      });
-      
-      // Return success response
-      return res.json({
-        success: true,
-        message: 'Payment verified and subscription activated successfully',
-        data: {
-          user_id: user._id,
-          email: user.email,
-          isSubscriber: true,
-          subscriptionStatus: 'active',
-          subscriptionDate: new Date(),
-          subscription_expiry: subscriptionExpiry,
-          payment_amount: paymentAmount,
-          payment_status: paymentData.status,
-          verification_ref: verificationRef,
-          flutterwave_ref: paymentData.flw_ref
-        },
-        verification_result: verificationResult
-      });
     } else {
-      console.log('💰 This is not a subscription payment, amount:', paymentAmount);
+      console.log('💰 This is not a wallet funding payment, amount:', paymentAmount);
       
-      // Handle other payment types (bills, wallet funding, etc.)
+      // Handle other payment types (bills, etc.)
       return res.json({
         success: true,
-        message: 'Payment verified successfully (non-subscription)',
+        message: 'Payment verified successfully (non-wallet funding)',
         data: {
           user_id: user._id,
           email: user.email,
           payment_amount: paymentAmount,
           payment_status: paymentData.status,
-          payment_type: 'non_subscription',
+          payment_type: 'other',
           verification_ref: verificationRef,
           flutterwave_ref: paymentData.flw_ref
         },
@@ -252,17 +216,16 @@ const getPaymentStatus = async (req, res) => {
     
     const paymentData = verificationResult.data;
     
-    // Check if user exists and subscription status
+    // Check if user exists and wallet balance
     const customerEmail = paymentData.customer?.email;
-    let subscriptionInfo = null;
+    let userInfo = null;
     
     if (customerEmail) {
       const user = await User.findOne({ email: customerEmail });
       if (user) {
-        subscriptionInfo = {
-          isSubscriber: user.isSubscriber,
-          subscriptionStatus: user.subscriptionStatus,
-          subscription_expiry: user.subscriptionExpiry,
+        userInfo = {
+          wallet_balance: user.walletBalance,
+          qualifies_for_discount: user.walletBalance >= 1000,
           user_id: user._id
         };
       }
@@ -277,7 +240,7 @@ const getPaymentStatus = async (req, res) => {
         currency: paymentData.currency,
         customer_email: customerEmail,
         flutterwave_ref: paymentData.flw_ref,
-        subscription_info: subscriptionInfo,
+        user_info: userInfo,
         payment_details: paymentData
       }
     });
