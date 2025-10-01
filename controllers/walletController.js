@@ -103,7 +103,10 @@ const fundWallet = async (req, res) => {
         paymentUrl: paymentResult.data.link,
         amount: amount,
         currency: 'NGN',
-        reference: paymentResult.data.tx_ref
+        reference: paymentResult.data.tx_ref,
+        email: user.email,
+        phone: user.phone,
+        name: `${user.firstName} ${user.lastName}`
       }
     });
   } catch (error) {

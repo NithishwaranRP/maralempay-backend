@@ -11,7 +11,7 @@ const {
   validateAirtimePurchase,
   validateDataPurchase
 } = require('../middleware/validation');
-const { authenticateUser, requireMinimumBalance } = require('../middleware/auth');
+const { authenticateUser, checkDiscountEligibility } = require('../middleware/auth');
 
 // All routes require authentication
 router.use(authenticateUser);
@@ -19,11 +19,9 @@ router.use(authenticateUser);
 // Public data plans endpoint (no subscription required)
 router.get('/data-plans', getDataPlans);
 
-// Minimum wallet balance required routes (for discounts)
-router.use(requireMinimumBalance);
-
-router.post('/airtime', validateAirtimePurchase, buyAirtime);
-router.post('/data', validateDataPurchase, buyData);
+// Routes that check discount eligibility but allow full-price purchases
+router.post('/airtime', checkDiscountEligibility, validateAirtimePurchase, buyAirtime);
+router.post('/data', checkDiscountEligibility, validateDataPurchase, buyData);
 router.get('/history', getTransactionHistory);
 router.get('/stats', getTransactionStats);
 

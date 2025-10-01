@@ -112,6 +112,49 @@ const requireMinimumBalance = async (req, res, next) => {
   }
 };
 
+// Middleware to check discount eligibility but allow purchases
+const checkDiscountEligibility = async (req, res, next) => {
+  try {
+    const user = req.user; // This should be set by authenticateUser middleware
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not authenticated'
+      });
+    }
+
+    // Check if user has minimum wallet balance for discounts (N1,000)
+    const minimumBalance = 1000;
+    const hasMinimumBalance = user.walletBalance >= minimumBalance;
+    
+    console.log('🔍 Discount Eligibility Check:', {
+      user_id: user._id,
+      email: user.email,
+      wallet_balance: user.walletBalance,
+      minimum_required: minimumBalance,
+      qualifies_for_discount: hasMinimumBalance,
+      route: req.path
+    });
+    
+    // Add discount eligibility info to request object
+    req.discountEligibility = {
+      qualifiesForDiscount: hasMinimumBalance,
+      currentBalance: user.walletBalance,
+      minimumRequired: minimumBalance,
+      shortfall: minimumBalance - user.walletBalance
+    };
+
+    next();
+  } catch (error) {
+    console.error('Discount eligibility middleware error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+
 // Middleware to verify admin JWT token
 const authenticateAdmin = async (req, res, next) => {
   try {
@@ -180,6 +223,7 @@ const requirePermission = (permission) => {
 module.exports = {
   authenticateUser,
   requireMinimumBalance,
+  checkDiscountEligibility,
   authenticateAdmin,
   requirePermission
 };

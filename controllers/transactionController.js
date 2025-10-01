@@ -26,9 +26,21 @@ const buyAirtime = async (req, res) => {
   try {
     const { phoneNumber, amount, network } = req.body;
     const user = req.user;
+    const discountInfo = req.discountEligibility;
 
-    // Calculate discount
-    const pricing = calculateDiscount(amount, 'airtime');
+    // Calculate pricing based on discount eligibility
+    let pricing;
+    if (discountInfo.qualifiesForDiscount) {
+      pricing = calculateDiscount(amount, 'airtime');
+    } else {
+      // No discount - user pays full price
+      pricing = {
+        originalAmount: amount,
+        discount: 0,
+        discountPercentage: 0,
+        finalAmount: amount
+      };
+    }
 
     // Create transaction record
     const transaction = new Transaction({
@@ -97,6 +109,7 @@ const buyData = async (req, res) => {
   try {
     const { phoneNumber, network, dataPlan } = req.body;
     const user = req.user;
+    const discountInfo = req.discountEligibility;
 
     // Find the data plan details
     const planDetails = DATA_PLANS[network]?.find(plan => plan.name === dataPlan);
@@ -108,8 +121,19 @@ const buyData = async (req, res) => {
       });
     }
 
-    // Calculate discount
-    const pricing = calculateDiscount(planDetails.amount, 'data');
+    // Calculate pricing based on discount eligibility
+    let pricing;
+    if (discountInfo.qualifiesForDiscount) {
+      pricing = calculateDiscount(planDetails.amount, 'data');
+    } else {
+      // No discount - user pays full price
+      pricing = {
+        originalAmount: planDetails.amount,
+        discount: 0,
+        discountPercentage: 0,
+        finalAmount: planDetails.amount
+      };
+    }
 
     // Create transaction record
     const transaction = new Transaction({

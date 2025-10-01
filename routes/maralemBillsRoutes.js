@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateUser } = require('../middleware/auth');
+const { authenticateUser, checkDiscountEligibility } = require('../middleware/auth');
 const { 
   initiateMaralemPurchase, 
   calculateDiscountedAmount, 
@@ -82,10 +82,11 @@ router.get('/billers/:category', async (req, res) => {
  * POST /api/maralem-bills/calculate-discount
  * Body: { amount: number }
  */
-router.post('/calculate-discount', async (req, res) => {
+router.post('/calculate-discount', checkDiscountEligibility, async (req, res) => {
   try {
     const { amount } = req.body;
     const user = req.user;
+    const discountInfo = req.discountEligibility;
     
     if (!amount || amount <= 0) {
       return res.status(400).json({
@@ -94,14 +95,30 @@ router.post('/calculate-discount', async (req, res) => {
       });
     }
     
-    // Check if user has minimum wallet balance for discounts (N1,000)
-    const minimumBalance = 1000;
-    const hasMinimumBalance = user.walletBalance >= minimumBalance;
-    
-    if (!hasMinimumBalance) {
-      return res.status(403).json({
-        success: false,
-        message: `Minimum wallet balance of ₦${minimumBalance} required for discounted services`,
+    if (discountInfo.qualifiesForDiscount) {
+      // User qualifies for discount
+      const discountedAmount = calculateDiscountedAmount(amount);
+      const subsidyAmount = calculateSubsidyAmount(amount);
+      
+      res.json({
+        success: true,
+        message: 'Discount calculated successfully',
+        data: {
+          original_amount: amount,
+          discounted_amount: discountedAmount,
+          discount_amount: subsidyAmount,
+          discount_percentage: DISCOUNT_RATE * 100,
+          qualifies_for_discount: true,
+          current_balance: user.walletBalance,
+          minimum_required: discountInfo.minimumRequired,
+          savings: subsidyAmount
+        }
+      });
+    } else {
+      // User doesn't qualify for discount, but can still purchase at full price
+      res.json({
+        success: true,
+        message: 'Full price calculation - no discount available',
         data: {
           original_amount: amount,
           discounted_amount: amount,
@@ -109,29 +126,12 @@ router.post('/calculate-discount', async (req, res) => {
           discount_percentage: 0,
           qualifies_for_discount: false,
           current_balance: user.walletBalance,
-          minimum_required: minimumBalance,
-          shortfall: minimumBalance - user.walletBalance
+          minimum_required: discountInfo.minimumRequired,
+          shortfall: discountInfo.shortfall,
+          can_purchase_full_price: true
         }
       });
     }
-    
-    const discountedAmount = calculateDiscountedAmount(amount);
-    const subsidyAmount = calculateSubsidyAmount(amount);
-    
-    res.json({
-      success: true,
-      message: 'Discount calculated successfully',
-      data: {
-        original_amount: amount,
-        discounted_amount: discountedAmount,
-        discount_amount: subsidyAmount,
-        discount_percentage: DISCOUNT_RATE * 100,
-        qualifies_for_discount: true,
-        current_balance: user.walletBalance,
-        minimum_required: minimumBalance,
-        savings: subsidyAmount
-      }
-    });
   } catch (error) {
     console.error('Calculate discount error:', error);
     res.status(500).json({
@@ -154,7 +154,7 @@ router.post('/calculate-discount', async (req, res) => {
  *   tx_ref: string (optional, will be generated if not provided)
  * }
  */
-router.post('/purchase', async (req, res) => {
+router.post('/purchase', checkDiscountEligibility, async (req, res) => {
   try {
     const { 
       type, 
@@ -166,6 +166,7 @@ router.post('/purchase', async (req, res) => {
     } = req.body;
     
     const user = req.user;
+    const discountInfo = req.discountEligibility;
     
     console.log('🔍 MaralemPay Purchase Request:', {
       type,
@@ -173,7 +174,8 @@ router.post('/purchase', async (req, res) => {
       amount,
       biller_name,
       biller_code,
-      user_email: user.email
+      user_email: user.email,
+      qualifies_for_discount: discountInfo.qualifiesForDiscount
     });
     
     // 1. Validate required fields
@@ -200,31 +202,10 @@ router.post('/purchase', async (req, res) => {
       });
     }
     
-    // 4. Check wallet balance for discount eligibility
-    const minimumBalance = 1000;
-    const hasMinimumBalance = user.walletBalance >= minimumBalance;
-    
-    if (!hasMinimumBalance) {
-      return res.status(403).json({
-        success: false,
-        message: `Minimum wallet balance of ₦${minimumBalance} required for discounted services`,
-        data: {
-          original_amount: amount,
-          discounted_amount: amount,
-          discount_amount: 0,
-          discount_percentage: 0,
-          qualifies_for_discount: false,
-          current_balance: user.walletBalance,
-          minimum_required: minimumBalance,
-          shortfall: minimumBalance - user.walletBalance
-        }
-      });
-    }
-    
-    // 5. Generate transaction reference if not provided
+    // 4. Generate transaction reference if not provided
     const finalTxRef = tx_ref || `MARALEM_${user._id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // 6. Prepare bill details
+    // 5. Prepare bill details
     const billDetails = {
       type: type.toUpperCase(),
       customer: customer,
@@ -234,24 +215,42 @@ router.post('/purchase', async (req, res) => {
       tx_ref: finalTxRef
     };
     
-    // 7. Calculate discount amounts
-    const discountedAmount = calculateDiscountedAmount(amount);
-    const subsidyAmount = calculateSubsidyAmount(amount);
+    // 6. Calculate amounts based on discount eligibility
+    let userAmount, discountAmount, subsidyAmount;
     
-    console.log('💰 MaralemPay Discount Calculation:', {
-      original_amount: amount,
-      discounted_amount: discountedAmount,
-      subsidy_amount: subsidyAmount,
-      discount_percentage: DISCOUNT_RATE * 100
-    });
+    if (discountInfo.qualifiesForDiscount) {
+      // User qualifies for discount
+      userAmount = calculateDiscountedAmount(amount);
+      subsidyAmount = calculateSubsidyAmount(amount);
+      discountAmount = subsidyAmount;
+      
+      console.log('💰 MaralemPay Discount Calculation:', {
+        original_amount: amount,
+        user_pays: userAmount,
+        subsidy_amount: subsidyAmount,
+        discount_percentage: DISCOUNT_RATE * 100
+      });
+    } else {
+      // User pays full price (no discount)
+      userAmount = amount;
+      subsidyAmount = 0;
+      discountAmount = 0;
+      
+      console.log('💰 MaralemPay Full Price Purchase:', {
+        original_amount: amount,
+        user_pays: userAmount,
+        discount_amount: 0,
+        discount_percentage: 0
+      });
+    }
     
-    // 8. Create transaction record (pending status)
+    // 7. Create transaction record (pending status)
     const transaction = new Transaction({
       user: user._id,
       type: 'maralem_purchase',
-      amount: discountedAmount, // User pays discounted amount
+      amount: userAmount, // Amount user pays
       originalAmount: amount,   // Full amount for service delivery
-      discountAmount: subsidyAmount,
+      discountAmount: discountAmount,
       status: 'pending',
       txRef: finalTxRef,
       billerCode: biller_code,
@@ -262,11 +261,12 @@ router.post('/purchase', async (req, res) => {
         biller_name: biller_name,
         service_type: type.toUpperCase(),
         original_amount: amount,
-        discount_amount: subsidyAmount,
-        discounted_amount: discountedAmount,
-        discount_percentage: DISCOUNT_RATE * 100,
-        is_subscriber: true,
-        subscription_id: user._id
+        discount_amount: discountAmount,
+        user_paid_amount: userAmount,
+        discount_percentage: discountInfo.qualifiesForDiscount ? DISCOUNT_RATE * 100 : 0,
+        qualifies_for_discount: discountInfo.qualifiesForDiscount,
+        current_balance: user.walletBalance,
+        minimum_required: discountInfo.minimumRequired
       }
     });
     
@@ -286,9 +286,10 @@ router.post('/purchase', async (req, res) => {
       
       console.log('🎉 MaralemPay Purchase Successful:', {
         tx_ref: finalTxRef,
-        user_paid: discountedAmount,
+        user_paid: userAmount,
         service_delivered: amount,
-        subsidy: subsidyAmount
+        discount: discountAmount,
+        qualifies_for_discount: discountInfo.qualifiesForDiscount
       });
       
       res.json({
@@ -298,6 +299,10 @@ router.post('/purchase', async (req, res) => {
           transaction_id: transaction._id,
           tx_ref: finalTxRef,
           status: 'completed',
+          original_amount: amount,
+          user_paid_amount: userAmount,
+          discount_amount: discountAmount,
+          qualifies_for_discount: discountInfo.qualifiesForDiscount,
           discount_details: result.discount_details,
           transaction_details: result.transaction_details,
           flw_reference: result.flw_reference,
